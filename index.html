@@ -1,43 +1,650 @@
 <!DOCTYPE html>
 <html lang="ms">
-  <head>
-    <meta charset="UTF-8" />
-    <!-- Meta viewport sangat penting supaya aplikasi nampak cantik dan responsif di handphone -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>e-RPH Cikgu Sabariah</title>
-    <meta name="description" content="Aplikasi pengurusan e-RPH untuk memudahkan guru menjana dan merekod RPH." />
-    
-    <!-- Tailwind CSS (Guna CDN untuk pemasangan pantas jika tidak menggunakan build tool seperti Vite) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Konfigurasi warna tema Tailwind (Pilihan) -->
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              // Boleh tambah warna kustom di sini jika perlu
-            }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>e-RPH Cikgu Sabariah</title>
+
+  <!-- Tailwind CSS dari CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- FontAwesome (Ikon) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel (Tukarkan React JSX ke JavaScript di dalam browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase Compat Scripts -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; }
+  </style>
+</head>
+<body>
+  <!-- Kontena untuk Aplikasi React -->
+  <div id="root"></div>
+
+  <!-- Skrip Utama Aplikasi -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // --- FIREBASE CONFIGURATION CIKGU SABARIAH ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBdFtSEEsdk0v8u95gq80xazhuYD3yF_RE",
+      authDomain: "rphsab-61a88.firebaseapp.com",
+      projectId: "rphsab-61a88",
+      storageBucket: "rphsab-61a88.firebasestorage.app",
+      messagingSenderId: "377431075107",
+      appId: "1:377431075107:web:013160264e46a5faf88496",
+      measurementId: "G-0G85XE6JE7"
+    };
+
+    // Initialize Firebase (Compat)
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const appIdStr = 'e-rph-sabariah';
+
+    function App() {
+      // --- STATE PENGURUSAN ---
+      const [currentView, setCurrentView] = useState('home');
+      const [selectedSubject, setSelectedSubject] = useState('');
+      const [selectedYear, setSelectedYear] = useState('');
+      
+      const [user, setUser] = useState(null);
+      const [rphList, setRphList] = useState([]);
+
+      // 1. Log masuk automatik Firebase
+      useEffect(() => {
+        auth.signInAnonymously().catch(err => console.error("Ralat log masuk:", err));
+        const unsubscribe = auth.onAuthStateChanged(setUser);
+        return () => unsubscribe();
+      }, []);
+
+      // 2. Tarik Rekod dari Firestore
+      useEffect(() => {
+        if (!user) return;
+        
+        const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
+        const unsubscribe = rphRef.onSnapshot((snapshot) => {
+          const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // Susun data: yang terbaru (tarikh dicipta) di atas
+          records.sort((a, b) => b.createdAt - a.createdAt);
+          setRphList(records);
+        }, (error) => {
+          console.error("Ralat mengambil data:", error);
+        });
+        
+        return () => unsubscribe();
+      }, [user]);
+
+      // --- KOMPONEN UI ASAS ---
+      const MenuButton = ({ title, icon, colorClass, onClick, description }) => (
+        <button onClick={onClick} className={`${colorClass} w-full text-left rounded-2xl p-4 shadow-sm hover:shadow-md transition-all active:scale-95 flex items-center justify-between group`}>
+          <div className="flex items-center space-x-4">
+            <div className="bg-white/20 p-3 rounded-xl text-white text-xl flex items-center justify-center w-12 h-12">
+              {icon}
+            </div>
+            <div>
+              <h3 className="text-white font-semibold text-lg">{title}</h3>
+              <p className="text-white/80 text-sm mt-0.5">{description}</p>
+            </div>
+          </div>
+          <i className="fas fa-chevron-right text-white/70 group-hover:text-white transition-colors"></i>
+        </button>
+      );
+
+      const Header = ({ title, showBack = true }) => (
+        <div className="bg-white shadow-sm px-4 py-4 sticky top-0 z-10 flex items-center">
+          {showBack ? (
+            <button onClick={() => setCurrentView('home')} className="mr-3 p-2 rounded-full hover:bg-gray-100 transition-colors">
+              <i className="fas fa-arrow-left text-gray-600 text-lg"></i>
+            </button>
+          ) : (
+            <div className="mr-3 p-2"><i className="fas fa-home text-blue-600 text-xl"></i></div>
+          )}
+          <h1 className="text-xl font-bold text-gray-800">{title}</h1>
+        </div>
+      );
+
+      const HomeView = () => (
+        <div className="flex flex-col min-h-screen bg-slate-50">
+          <Header title="e-RPH Cikgu Sabariah" showBack={false} />
+          <div className="p-4 flex-1">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Selamat Kembali, Cikgu Sabariah!</h2>
+              <p className="text-gray-500 mt-1">Pilih menu di bawah untuk mula menguruskan RPH anda.</p>
+            </div>
+            <div className="flex flex-col space-y-4">
+              <MenuButton title="Bahasa Melayu" description="Bina RPH subjek Bahasa Melayu" icon={<i className="fas fa-book-open"></i>} colorClass="bg-gradient-to-r from-blue-500 to-blue-600" onClick={() => setCurrentView('bm')} />
+              <MenuButton title="Teknologi Maklumat dan Komunikasi" description="Bina RPH subjek TMK" icon={<i className="fas fa-desktop"></i>} colorClass="bg-gradient-to-r from-teal-500 to-emerald-600" onClick={() => setCurrentView('tmk')} />
+              <MenuButton title="Cuti / Program Sekolah" description="Rekod cuti am atau program rasmi" icon={<i className="fas fa-calendar-alt"></i>} colorClass="bg-gradient-to-r from-amber-500 to-orange-600" onClick={() => setCurrentView('cuti')} />
+              
+              <div className="border-t border-gray-200 my-4 pt-4">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Pengurusan & Rekod</h3>
+                <div className="flex flex-col space-y-4">
+                  <MenuButton title="Kehadiran Murid" description="Rekod dan pantau kehadiran kelas" icon={<i className="fas fa-users"></i>} colorClass="bg-gradient-to-r from-pink-500 to-rose-600" onClick={() => setCurrentView('kehadiran')} />
+                  <MenuButton title="Rekod RPH" description="Lihat, edit, dan jana PDF RPH" icon={<i className="fas fa-folder-open"></i>} colorClass="bg-gradient-to-r from-purple-500 to-indigo-600" onClick={() => setCurrentView('rekod')} />
+                  <MenuButton title="Semakan Minggu" description="Jejak status penghantaran mingguan" icon={<i className="fas fa-check-square"></i>} colorClass="bg-gradient-to-r from-slate-600 to-slate-700" onClick={() => setCurrentView('semakan')} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      const SubMenuView = ({ title, options, onSelect }) => (
+        <div className="flex flex-col min-h-screen bg-slate-50">
+          <Header title={title} />
+          <div className="p-4 flex-1">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Pilih Tahun</h2>
+            <div className="flex flex-col space-y-3">
+              {options.map(opt => (
+                <button key={opt} onClick={() => onSelect(opt)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center hover:bg-gray-50 active:scale-95 transition-all">
+                  <span className="font-semibold text-gray-700">{opt}</span>
+                  <i className="fas fa-chevron-right text-gray-400"></i>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+
+      const PlaceholderView = ({ title, bgClass }) => (
+        <div className="flex flex-col min-h-screen bg-slate-50">
+          <Header title={title} />
+          <div className="flex-1 p-4 flex items-center justify-center">
+            <div className="text-center bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-sm w-full">
+              <div className={`w-16 h-16 ${bgClass} rounded-full flex items-center justify-center mx-auto mb-4`}><span className="text-white text-2xl font-bold">!</span></div>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">Modul {title}</h2>
+              <p className="text-gray-500 mb-6">Modul ini akan dibangunkan seterusnya.</p>
+            </div>
+          </div>
+        </div>
+      );
+
+      const KehadiranView = () => {
+        const [tarikh, setTarikh] = useState(new Date().toISOString().split('T')[0]);
+        const [kelas, setKelas] = useState('3BD');
+        const senaraiKelas = ['3BD', '4BD', '5BD', '6BD', '6BP'];
+        return (
+          <div className="flex flex-col min-h-screen bg-slate-50">
+            <Header title="Kehadiran Murid" />
+            <div className="p-4 flex-1">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-4 space-y-5">
+                <div>
+                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-calendar mr-2"></i> Tarikh</label>
+                  <input type="date" value={tarikh} onChange={(e) => setTarikh(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-pink-500 focus:border-pink-500 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-users mr-2"></i> Kelas</label>
+                  <div className="flex flex-wrap gap-2">
+                    {senaraiKelas.map(k => (
+                      <button key={k} onClick={() => setKelas(k)} className={`px-4 py-2 rounded-xl font-medium transition-colors ${kelas === k ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{k}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                <i className="fas fa-users text-4xl text-gray-300 mb-3"></i>
+                <p className="text-gray-500">Senarai nama murid untuk kelas <strong>{kelas}</strong> pada tarikh <strong>{tarikh}</strong>.</p>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const RekodRPHView = () => {
+        const [filterSubjek, setFilterSubjek] = useState('Semua');
+        const [filterMinggu, setFilterMinggu] = useState('Semua');
+        const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+        const mingguOptions = Array.from({ length: 43 }, (_, i) => i + 1);
+
+        const filteredRekod = rphList.filter(rph => {
+          const matchSubjek = filterSubjek === 'Semua' || rph.subjek === filterSubjek;
+          const matchMinggu = filterMinggu === 'Semua' || parseInt(rph.minggu) === parseInt(filterMinggu);
+          return matchSubjek && matchMinggu;
+        });
+
+        const handleDelete = async (id) => {
+          if (!user) return;
+          try {
+            await db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords').doc(id).delete();
+            setDeleteConfirmId(null);
+          } catch (err) {
+            console.error("Gagal memadam:", err);
           }
-        }
+        };
+
+        return (
+          <div className="flex flex-col min-h-screen bg-slate-50">
+            <Header title="Rekod RPH" />
+            <div className="p-4 flex-1">
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-4 flex gap-3 overflow-x-auto">
+                <div className="min-w-[150px] flex-1">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Subjek</label>
+                  <select value={filterSubjek} onChange={(e) => setFilterSubjek(e.target.value)} className="w-full border border-gray-200 rounded-xl p-2.5 text-gray-700 outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50">
+                    <option value="Semua">Semua Subjek</option>
+                    <option value="Bahasa Melayu">Bahasa Melayu</option>
+                    <option value="TMK">TMK</option>
+                  </select>
+                </div>
+                <div className="min-w-[120px] flex-1">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Minggu</label>
+                  <select value={filterMinggu} onChange={(e) => setFilterMinggu(e.target.value)} className="w-full border border-gray-200 rounded-xl p-2.5 text-gray-700 outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50">
+                    <option value="Semua">Semua</option>
+                    {mingguOptions.map(m => <option key={m} value={m}>Minggu {m}</option>)}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                {filteredRekod.length > 0 ? filteredRekod.map((rekod) => (
+                  <div key={rekod.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-md font-bold">M{rekod.minggu}</span>
+                        <span className="text-sm font-semibold text-gray-800">{rekod.subjek} ({rekod.kelas})</span>
+                      </div>
+                      <h4 className="font-medium text-gray-700 text-sm whitespace-pre-wrap">{rekod.tema?.split('-')[0]}</h4>
+                      <p className="text-xs text-gray-400 mt-1"><i className="fas fa-calendar mr-1"></i> {rekod.tarikh}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {deleteConfirmId === rekod.id ? (
+                        <button onClick={() => handleDelete(rekod.id)} className="px-3 py-2 bg-red-600 text-white hover:bg-red-700 rounded-xl transition-colors text-xs font-bold">Padam?</button>
+                      ) : (
+                        <>
+                          <button className="p-2.5 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-xl transition-colors"><i className="fas fa-edit"></i></button>
+                          <button onClick={() => setDeleteConfirmId(rekod.id)} className="p-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors"><i className="fas fa-trash"></i></button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )) : (
+                  <div className="bg-white p-8 rounded-2xl text-center shadow-sm border border-gray-100 text-gray-400">
+                    <i className="fas fa-folder-open text-4xl mb-3 opacity-50 block mx-auto"></i>
+                    <p>Tiada rekod RPH ditemui.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const SemakanMingguView = () => {
+        const takwim2026 = [
+          { minggu: 1, tarikh: "12-16 Jan", catatan: "Minggu Transisi Tahun 1 / Program Minggu 1" },
+          { minggu: 2, tarikh: "19-23 Jan", catatan: "Minggu Transisi Tahun 1" },
+          { minggu: 3, tarikh: "26-30 Jan", catatan: "Minggu Transisi Tahun" },
+          { minggu: 4, tarikh: "2-6 Feb", catatan: "Minggu Transisi Tahun" },
+          { minggu: 5, tarikh: "9-13 Feb", catatan: "" },
+          { minggu: 6, tarikh: "16-20 Feb", catatan: "" },
+          { minggu: 7, tarikh: "23-27 Feb", catatan: "" },
+          { minggu: 8, tarikh: "2-6 Mac", catatan: "" },
+          { minggu: 9, tarikh: "9-13 Mac", catatan: "" },
+          { minggu: 10, tarikh: "16-20 Mac", catatan: "" },
+          { type: "cuti", tarikh: "21-29 Mac 2026", catatan: "CUTI PERTENGAHAN PENGGAL 1" },
+          { minggu: 11, tarikh: "30 Mac - 3 April", catatan: "" },
+          { minggu: 12, tarikh: "6-10 April", catatan: "" },
+          { minggu: 13, tarikh: "13-17 April", catatan: "" },
+          { minggu: 14, tarikh: "20-24 April", catatan: "" },
+          { minggu: 15, tarikh: "27 April - 1 Mei", catatan: "" },
+          { minggu: 16, tarikh: "4-8 Mei", catatan: "" },
+          { minggu: 17, tarikh: "11-15 Mei", catatan: "" },
+          { minggu: 18, tarikh: "18-22 Mei", catatan: "" },
+          { type: "cuti", tarikh: "23 Mei - 7 Jun 2026", catatan: "CUTI PERTENGAHAN TAHUN" },
+          { minggu: 19, tarikh: "8-12 Jun", catatan: "" },
+          { minggu: 20, tarikh: "15-19 Jun", catatan: "" },
+          { minggu: 21, tarikh: "22-26 Jun", catatan: "" },
+          { minggu: 22, tarikh: "29 Jun - 3 Julai", catatan: "" },
+          { minggu: 23, tarikh: "6-10 Julai", catatan: "" },
+          { minggu: 24, tarikh: "13-17 Julai", catatan: "" },
+          { minggu: 25, tarikh: "20-24 Julai", catatan: "" },
+          { minggu: 26, tarikh: "27-31 Julai", catatan: "" },
+          { minggu: 27, tarikh: "3-7 Ogos", catatan: "" },
+          { minggu: 28, tarikh: "10-14 Ogos", catatan: "" },
+          { minggu: 29, tarikh: "17-21 Ogos", catatan: "" },
+          { minggu: 30, tarikh: "24-28 Ogos", catatan: "" },
+          { type: "cuti", tarikh: "29 Ogos - 6 September 2026", catatan: "CUTI PERTENGAHAN PENGGAL 2" },
+          { minggu: 31, tarikh: "7-11 September", catatan: "" },
+          { minggu: 32, tarikh: "14-18 September", catatan: "" },
+          { minggu: 33, tarikh: "21-25 September", catatan: "" },
+          { minggu: 34, tarikh: "28 Sept - 2 Okt", catatan: "" },
+          { minggu: 35, tarikh: "5-9 Okt", catatan: "" },
+          { minggu: 36, tarikh: "12-16 Okt", catatan: "" },
+          { minggu: 37, tarikh: "19-23 Okt", catatan: "" },
+          { minggu: 38, tarikh: "26-30 Okt", catatan: "" },
+          { minggu: 39, tarikh: "2-6 Nov", catatan: "" },
+          { minggu: 40, tarikh: "9-13 Nov", catatan: "" },
+          { minggu: 41, tarikh: "16-20 Nov", catatan: "" },
+          { minggu: 42, tarikh: "23-27 Nov", catatan: "" },
+          { minggu: 43, tarikh: "30 Nov - 4 Dis", catatan: "" },
+          { type: "cuti", tarikh: "5 Dis 2026 - 31 Dis 2026", catatan: "CUTI AKHIR PERSEKOLAHAN" }
+        ];
+
+        return (
+          <div className="flex flex-col min-h-screen bg-slate-50">
+            <Header title="Semakan Mingguan" />
+            <div className="p-4 flex-1">
+              <p className="text-gray-500 text-sm mb-4 px-1">Status penghantaran auto-tick berdasarkan rekod RPH yang telah siap dibina.</p>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-100">
+                {takwim2026.map((item, index) => {
+                  if (item.type === 'cuti') {
+                    return (
+                      <div key={`cuti-${index}`} className="p-4 bg-amber-50/50 flex flex-col justify-center items-center text-center">
+                        <span className="text-amber-800 font-bold text-sm">{item.catatan}</span>
+                        <span className="text-amber-600 text-xs mt-1">{item.tarikh}</span>
+                      </div>
+                    );
+                  }
+                  const isHantar = rphList.some(rph => parseInt(rph.minggu) === item.minggu); 
+                  return (
+                    <div key={`minggu-${item.minggu}`} className="p-4 flex items-start sm:items-center justify-between hover:bg-gray-50 transition-colors">
+                      <div className="flex-1 pr-4">
+                        <h4 className="font-semibold text-gray-800">Minggu {item.minggu}</h4>
+                        <p className="text-sm text-gray-500 mt-0.5"><i className="fas fa-calendar mr-1"></i> {item.tarikh}</p>
+                        {item.catatan && <span className="inline-block mt-1.5 px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 text-xs font-medium rounded-md">{item.catatan}</span>}
+                      </div>
+                      <div className="mt-1 sm:mt-0 whitespace-nowrap">
+                        {isHantar ? (
+                          <div className="flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded-full text-sm font-medium"><i className="fas fa-check-circle mr-1.5"></i> Dihantar</div>
+                        ) : (
+                          <div className="flex items-center text-gray-400 px-3 py-1.5 bg-gray-50 rounded-full text-sm font-medium"><i className="far fa-circle mr-1.5"></i> Belum</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const RphFormView = () => {
+        // --- DATA DSKP & REFLEKSI ---
+        const getStudentsForReflection = (subject, year) => {
+          if (subject === 'Bahasa Melayu') {
+            if (year === 'Tahun 6') return ['Athena', 'Hamizi'];
+            if (year === 'Tahun 5') return ['Darren', 'Haidiel'];
+            if (year === 'Tahun 4') return ['Atya', 'Ibtisam', 'Issabell'];
+            if (year === 'Tahun 3') return ['Natalie', 'Alexzander'];
+          }
+          if (subject === 'TMK') {
+            if (year === 'Tahun 6') return ['Suraiya, Aina', 'Joseline, Izzuandie', 'Ihya', 'Irfan, Ian'];
+            return ['Kumpulan 1', 'Kumpulan 2']; 
+          }
+          return ['Refleksi'];
+        };
+
+        const tajukBMTahun3 = [
+          { tema: "TEMA 1: KEKELUARGAAN", units: ["Unit 1: Seronok Bersama-sama Keluarga", "Unit 2: Rajinnya Mak Cik Ina", "Unit 3: Jom ke Rumah Pak Cik Man"] },
+          { tema: "TEMA 2: KEMASYARAKATAN", units: ["Unit 4: Sepakat Membawa Berkat", "Unit 5: Seronoknya Hidup Berjiran", "Unit 6: Kami Prihatin"] },
+          { tema: "TEMA 3: KESIHATAN DAN KEBERSIHAN", units: ["Unit 7: Saya Sihat Saya Gembira", "Unit 8: Alam Bersih Hidup Bahagia", "Unit 9: Gaya Hidup Sihat"] },
+          { tema: "TEMA 4: KESELAMATAN", units: ["Unit 10: Rumahku Selamat", "Unit 11: Keselamatan Kebakaran", "Unit 12: Jaga Keselamatan Diri"] },
+          { tema: "TEMA 5: PERPADUAN", units: ["Unit 13: Hidup Bermuafakat", "Unit 14: Perpaduan Teras Kesejahteraan", "Unit 15: Hidup Harmoni"] },
+          { tema: "TEMA 6: KEBUDAYAAN, KESENIAN DAN ESTETIKA", units: ["Unit 16: Indahnya Budaya Kita", "Unit 17: Seni Warisan Kita", "Unit 18: Indahnya Seni"] },
+          { tema: "TEMA 7: JATI DIRI, PATRIOTISME DAN KEWARGANEGARAAN", units: ["Unit 19: Jati Diri", "Unit 20: Cinta akan Negara", "Unit 21: Saya Anak Malaysia"] },
+          { tema: "TEMA 8: KELESTARIAN ALAM", units: ["Unit 22: Alam Bersih Hidup Sihat", "Unit 23: Cintai Alam Sekitar", "Unit 24: Hutan Bakau"] },
+          { tema: "TEMA 9: PERTANIAN DAN PENTERNAKAN", units: ["Unit 25: Mari Bertani", "Unit 26: Penternak Muda", "Unit 27: Alatan Pertanian Moden"] },
+          { tema: "TEMA 10: EKONOMI, KEUSAHAWANAN DAN PENGURUSAN KEWANGAN", units: ["Unit 28: Bijak Berniaga", "Unit 29: Saya Suka Berniaga", "Unit 30: Berjimat Amalan Mulia"] }
+        ];
+
+        const tajukBMTahun5 = [
+          { tema: "TEMA 1: KEKELUARGAAN", units: ["Unit 1: Harapan Keluarga", "Unit 2: Keluargaku Hebat", "Unit 3: Hubungan yang Erat"] },
+          { tema: "TEMA 2: KESIHATAN DAN KEBERSIHAN", units: ["Unit 4: Jagalah Dirimu", "Unit 5: Persekitaran yang Sihat", "Unit 6: Sayangi Dirimu"] },
+          { tema: "TEMA 3: UTAMAKAN KESELAMATAN", units: ["Unit 7: Fikir Dahulu Sebelum Buat", "Unit 8: Seronoknya ke Sekolah", "Unit 9: Jangan Cuai"] },
+          { tema: "TEMA 4: KEMASYARAKATAN", units: ["Unit 10: Komuniti Sepakat", "Unit 11: Baktiku untukmu", "Unit 12: Bersatu Teguh Bercerai Roboh"] },
+          { tema: "TEMA 5: PERPADUAN", units: ["Unit 13: Muafakat Membawa Berkat", "Unit 14: Berganding Bahu", "Unit 15: Semangat Kekitaan"] },
+          { tema: "TEMA 6: KELESTARIAN ALAM", units: ["Unit 16: Indahnya Negeriku", "Unit 17: Indahnya Alamku", "Unit 18: Kita dan Alam"] },
+          { tema: "TEMA 7: PERTANIAN DAN PENTERNAKAN", units: ["Unit 19: Pertanian ialah Perniagaan", "Unit 20: Penternak Berjaya", "Unit 21: Hasil Bumiku Bertuah"] },
+          { tema: "TEMA 8: EKONOMI, KEUSAHAWANAN DAN PENGURUSAN KEWANGAN", units: ["Unit 22: Titik Peluh Kita", "Unit 23: Usaha Jaya", "Unit 24: Bijak Mengurus Wang"] },
+          { tema: "TEMA 9: SAINS, TEKNOLOGI DAN INOVASI", units: ["Unit 25: Sains dalam Kehidupan", "Unit 26: Teknologi Terkini", "Unit 27: Inovasi Ciptaanku"] },
+          { tema: "TEMA 10: INTEGRITI", units: ["Unit 28: Bertanggungjawab", "Unit 29: Patuhi Arahan", "Unit 30: Indahnya Amalan Baik"] }
+        ];
+
+        const tajukBMTahun6 = [
+          { tema: "TEMA 1: KEKELUARGAAN", units: ["Unit 1: Bakat Unik", "Unit 2: Tanggungjawab Keluarga", "Unit 3: Mari Mengembara"] },
+          { tema: "TEMA 2: KESIHATAN DAN KEBERSIHAN", units: ["Unit 4: Badan Sihat Hidup Gembira", "Unit 5: Kebersihan Asas Kesihatan", "Unit 6: Amalan Cara Hidup Sihat"] },
+          { tema: "TEMA 3: KESELAMATAN", units: ["Unit 7: Keselamatan Diri Tanggungjawab Bersama", "Unit 8: Keselamatan di Alam Siber", "Unit 9: Awasi Keselamatan Diri"] },
+          { tema: "TEMA 4: PERPADUAN", units: ["Unit 10: Berkat Perpaduan", "Unit 11: Bagai Aur dengan Tebing", "Unit 12: Bersama-sama Berpadu Tenaga"] },
+          { tema: "TEMA 5: KEBUDAYAAN, KESENIAN DAN ESTETIKA", units: ["Unit 13: Warisan Kesenian", "Unit 14: Cantiknya Budaya Bangsa", "Unit 15: Khazanah Berharga"] },
+          { tema: "TEMA 6: SAINS, TEKNOLOGI DAN INOVASI", units: ["Unit 16: Ajaibnya Sains", "Unit 17: Teknologi Kreatif", "Unit 18: Inovasi"] },
+          { tema: "TEMA 7: KELESTARIAN ALAM", units: ["Unit 19: Indahnya Bumiku", "Unit 20: Sayangi Persekitaran Kita", "Unit 21: Alam Sejahtera"] },
+          { tema: "TEMA 8: PERTANIAN DAN PENTERNAKAN", units: ["Unit 22: Petani Moden", "Unit 23: Penternak Berjaya", "Unit 24: Inovasi Pertanian dan Penternakan"] },
+          { tema: "TEMA 9: EKONOMI, KEUSAHAWANAN DAN PENGURUSAN KEWANGAN", units: ["Unit 25: Menjanakan Pendapatan", "Unit 26: Usahawan Berjaya", "Unit 27: Mengurus Wang"] },
+          { tema: "TEMA 10: INTEGRITI", units: ["Unit 28: Kejujuran", "Unit 29: Prinsip Hidup", "Unit 30: Amanah"] }
+        ];
+
+        const getTemaList = () => {
+          if (selectedSubject === 'Bahasa Melayu') {
+            if (selectedYear === 'Tahun 6') return tajukBMTahun6;
+            if (selectedYear === 'Tahun 5') return tajukBMTahun5;
+            if (selectedYear === 'Tahun 3') return tajukBMTahun3;
+          }
+          return [];
+        };
+
+        const students = getStudentsForReflection(selectedSubject, selectedYear);
+        const currentTemaList = getTemaList();
+
+        const [formData, setFormData] = useState({
+          minggu: '2',
+          tarikh: '19.1.2026',
+          hari: 'ISNIN',
+          masa: '0710-0810\n1030-1130',
+          kelas: selectedSubject === 'TMK' && selectedYear === 'Tahun 6' ? '6BP' : '6BD',
+          tema: selectedSubject === 'Bahasa Melayu' && selectedYear === 'Tahun 6' ? 'TEMA 1: KEKELUARGAAN - Unit 1: Bakat Unik' : 
+                selectedSubject === 'Bahasa Melayu' && selectedYear === 'Tahun 5' ? 'TEMA 1: KEKELUARGAAN - Unit 1: Harapan Keluarga' : 
+                selectedSubject === 'Bahasa Melayu' && selectedYear === 'Tahun 3' ? 'TEMA 1: KEKELUARGAAN - Unit 1: Seronok Bersama-sama Keluarga' : 
+                'Kekeluargaan - Unit 1 : Bakat unik',
+          standardKandungan: '1.1 Mendengar atau mengecam isyarat serta memberikan respons semasa berkomunikasi dalam situasi formal dan tidak formal.',
+          standardPembelajaran: '1.1.1 Mendengar atau melihat, mengecam sebutan atau isyarat dan menyebut atau mengisyarat semula ujaran yang terdapat dalam pelbagai situasi.',
+          objektif: 'Pada akhir pembelajaran, murid dapat:\n\n1.  Mengecam sekurang-kurangnya 3 perkataan (meniup, rekoder, sokongan) melalui visual dan kod tangan.\n2.  Menyebut atau mengisyarat semula dialog pendek dengan betul.',
+          aktiviti: '1.  Guru tunjuk gambar halaman 2 (perkhemahan & memancing).\n2.  Guru berisyarat keluarga, khemah, pancing.\n3.  Guru perkenalkan perkataan: susun, pinggan, pasang, khemah, pancing, ikan menggunakan kad gambar.\n4.  Guru tunjuk dan murid meniru kod tangan bagi setiap perkataan.\n5.  Murid memadankan kad perkataan dengan gambar di papan putih/meja\n6.  Ulangan isyarat 6 perkataan',
+          penggunaanTMK: 'Paparan Slaid PowerPoint / Video Interaktif'
+        });
+
+        const [copyStatus, setCopyStatus] = useState('');
+        const [isGeneratingObj, setIsGeneratingObj] = useState(false);
+        const [isGeneratingAct, setIsGeneratingAct] = useState(false);
+        const [isSaving, setIsSaving] = useState(false);
+        const [saveStatus, setSaveStatus] = useState('');
+
+        const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+        // AI Simulation
+        const handleAIAssist = (type) => {
+          if (type === 'objektif') {
+            setIsGeneratingObj(true);
+            setTimeout(() => {
+              setFormData(prev => ({ ...prev, objektif: 'Pada akhir pembelajaran, murid dapat:\n\n1. Mengecam 2 perkataan baru dengan bimbingan guru menggunakan isyarat.\n2. Memadankan kad gambar dengan perkataan yang betul.' }));
+              setIsGeneratingObj(false);
+            }, 1500);
+          } else if (type === 'aktiviti') {
+            setIsGeneratingAct(true);
+            setTimeout(() => {
+              setFormData(prev => ({ ...prev, aktiviti: '1. Guru menayangkan video animasi/gambar bersaiz besar di hadapan kelas.\n2. Guru membimbing murid menyebut atau mengisyaratkan nama objek satu persatu.\n3. Murid tampil ke hadapan untuk memadankan kad perkataan dengan gambar.\n4. Latih tubi isyarat bersama rakan secara berpasangan.\n5. Guru memberi peneguhan positif (pujian/token).' }));
+              setIsGeneratingAct(false);
+            }, 1500);
+          }
+        };
+
+        // Google Docs Copy
+        const copyToClipboard = () => {
+          const tableEl = document.getElementById('rph-table-export');
+          const range = document.createRange();
+          range.selectNode(tableEl);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          try {
+            document.execCommand('copy');
+            setCopyStatus('success');
+            setTimeout(() => setCopyStatus(''), 5000);
+          } catch (err) { setCopyStatus('error'); }
+          sel.removeAllRanges();
+        };
+
+        // Save to Firebase
+        const handleSaveRPH = async () => {
+          if (!user) return;
+          setIsSaving(true);
+          try {
+            const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
+            await rphRef.add({ ...formData, subjek: selectedSubject, tahun: selectedYear, createdAt: Date.now() });
+            setSaveStatus('success');
+            setTimeout(() => setSaveStatus(''), 3000);
+          } catch (error) {
+            console.error("Ralat menyimpan RPH:", error);
+            setSaveStatus('error');
+          }
+          setIsSaving(false);
+        };
+
+        const getColSpan = (total, index) => {
+          if (total === 1) return 4;
+          if (total === 2) return 2; 
+          if (total === 3) return index === 1 ? 2 : 1; 
+          if (total === 4) return 1; 
+          return 1;
+        };
+
+        return (
+          <div className="flex flex-col min-h-screen bg-slate-50">
+            <Header title={`Borang RPH: ${selectedSubject} (${selectedYear})`} />
+            <div className="p-4 flex-1 max-w-3xl mx-auto w-full space-y-6">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+                <h3 className="font-bold text-gray-800 border-b pb-2 mb-4">Maklumat Asas</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Minggu</label><input type="text" name="minggu" value={formData.minggu} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="text" name="tarikh" value={formData.tarikh} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Kelas</label><input type="text" name="kelas" value={formData.kelas} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+                </div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Masa</label><textarea rows="2" name="masa" value={formData.masa} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
+
+                <h3 className="font-bold text-gray-800 border-b pb-2 mt-6 mb-4">Kandungan Pembelajaran</h3>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Tema / Tajuk</label>
+                  {currentTemaList.length > 0 ? (
+                    <select name="tema" value={formData.tema} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-gray-700">
+                      <option value="">-- Sila Pilih Tema dan Unit --</option>
+                      {currentTemaList.map((kumpulan, idx) => (
+                        <optgroup key={idx} label={kumpulan.tema}>
+                          {kumpulan.units.map((unit, uIdx) => <option key={uIdx} value={`${kumpulan.tema} - ${unit}`}>{unit}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  ) : (
+                    <textarea rows="2" name="tema" value={formData.tema} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
+                  )}
+                </div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Standard Kandungan</label><textarea rows="2" name="standardKandungan" value={formData.standardKandungan} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Standard Pembelajaran</label><textarea rows="3" name="standardPembelajaran" value={formData.standardPembelajaran} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
+                
+                <div>
+                  <div className="flex justify-between items-end mb-1">
+                    <label className="block text-xs font-semibold text-gray-600">Objektif</label>
+                    <button onClick={() => handleAIAssist('objektif')} disabled={isGeneratingObj} className="flex items-center text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md hover:bg-indigo-100 transition-colors">
+                      {isGeneratingObj ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-magic mr-1"></i>} Bantuan AI
+                    </button>
+                  </div>
+                  <textarea rows="5" name="objektif" value={formData.objektif} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
+                </div>
+                <div>
+                  <div className="flex justify-between items-end mb-1">
+                    <label className="block text-xs font-semibold text-gray-600">Aktiviti Pengajaran (4-5 Langkah)</label>
+                    <button onClick={() => handleAIAssist('aktiviti')} disabled={isGeneratingAct} className="flex items-center text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md hover:bg-indigo-100 transition-colors">
+                      {isGeneratingAct ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-magic mr-1"></i>} Bantuan AI
+                    </button>
+                  </div>
+                  <textarea rows="6" name="aktiviti" value={formData.aktiviti} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
+                </div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Penggunaan TMK</label><input type="text" name="penggunaanTMK" value={formData.penggunaanTMK} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+              </div>
+
+              {/* PRATONTON JADUAL GOOGLE DOCS */}
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
+                 <h3 className="font-bold text-gray-800 mb-4">Pratonton Jadual Google Docs</h3>
+                 <div className="min-w-[700px] pointer-events-none select-none bg-white p-2">
+                   <table id="rph-table-export" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Arial, sans-serif', fontSize: '10pt', color: 'black' }}>
+                    <tbody>
+                      <tr><td colSpan="6" style={{ border: '1px solid black', padding: '8px', textAlign: 'center', fontWeight: 'bold', backgroundColor: '#d9ead3' }}>{selectedSubject.toUpperCase() || 'BAHASA MELAYU'}</td></tr>
+                      <tr>
+                        <td rowSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', width: '15%' }}>MINGGU</td>
+                        <td rowSpan="2" style={{ border: '1px solid black', padding: '8px', textAlign: 'center', width: '10%' }}>{formData.minggu}</td>
+                        <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', width: '15%', textAlign: 'center' }}>TARIKH</td>
+                        <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center', width: '22%' }}>{formData.tarikh}</td>
+                        <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', width: '15%', textAlign: 'center' }}>MASA</td>
+                        <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center', width: '23%', whiteSpace: 'pre-wrap' }}>{formData.masa}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', textAlign: 'center' }}>HARI</td>
+                        <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{formData.hari}</td>
+                        <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', textAlign: 'center' }}>KELAS</td>
+                        <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{formData.kelas}</td>
+                      </tr>
+                      <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3' }}>TEMA / TAJUK</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', whiteSpace: 'pre-wrap' }}>{formData.tema}</td></tr>
+                      <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3' }}>STANDARD KANDUNGAN</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', whiteSpace: 'pre-wrap' }}>{formData.standardKandungan}</td></tr>
+                      <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3' }}>STANDARD PEMBELAJARAN</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', whiteSpace: 'pre-wrap' }}>{formData.standardPembelajaran}</td></tr>
+                      <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', verticalAlign: 'top' }}>OBJEKTIF</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>{formData.objektif}</td></tr>
+                      <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', verticalAlign: 'top' }}>AKTIVITI PENGAJARAN</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>{formData.aktiviti}</td></tr>
+                      <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', verticalAlign: 'top' }}>PENGGUNAAN TMK</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>{formData.penggunaanTMK}</td></tr>
+                      <tr>
+                        <td colSpan="2" rowSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', verticalAlign: 'top' }}>REFLEKSI</td>
+                        {students.map((student, index) => <td key={`name-${index}`} colSpan={getColSpan(students.length, index)} style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{student}</td>)}
+                      </tr>
+                      <tr>{students.map((student, index) => <td key={`box-${index}`} colSpan={getColSpan(students.length, index)} style={{ border: '1px solid black', padding: '8px', height: '60px' }}></td>)}</tr>
+                    </tbody>
+                  </table>
+                 </div>
+              </div>
+
+              <div className="flex gap-3 pb-8">
+                <button onClick={copyToClipboard} className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-semibold shadow-sm transition-all ${copyStatus === 'success' ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
+                  {copyStatus === 'success' ? <><i className="fas fa-check"></i> Berjaya Disalin!</> : <><i className="fas fa-copy"></i> Salin ke Google Docs</>}
+                </button>
+                <button onClick={handleSaveRPH} disabled={isSaving} className={`flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-colors active:scale-95 disabled:opacity-70 ${saveStatus === 'success' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'}`}>
+                  {isSaving ? <i className="fas fa-spinner fa-spin"></i> : saveStatus === 'success' ? <i className="fas fa-check"></i> : <i className="fas fa-save"></i>} {saveStatus === 'success' ? 'Disimpan' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Navigasi Utama
+      const handleSelectYear = (subject, year) => {
+        setSelectedSubject(subject);
+        setSelectedYear(year);
+        setCurrentView('rph-form');
+      };
+
+      switch (currentView) {
+        case 'bm': return <SubMenuView title="Bahasa Melayu" options={['Tahun 3', 'Tahun 4', 'Tahun 5', 'Tahun 6']} onSelect={(year) => handleSelectYear('Bahasa Melayu', year)} />;
+        case 'tmk': return <SubMenuView title="Teknologi Maklumat dan Komunikasi" options={['Tahun 4', 'Tahun 5', 'Tahun 6']} onSelect={(year) => handleSelectYear('TMK', year)} />;
+        case 'rph-form': return <RphFormView />;
+        case 'cuti': return <PlaceholderView title="Cuti & Program" bgClass="bg-amber-500" />;
+        case 'kehadiran': return <KehadiranView />;
+        case 'rekod': return <RekodRPHView />;
+        case 'semakan': return <SemakanMingguView />;
+        case 'home': default: return <HomeView />;
       }
-    </script>
-    
-    <style>
-      /* Memastikan latar belakang aplikasi menutupi skrin sepenuhnya */
-      body {
-        margin: 0;
-        background-color: #f8fafc; /* slate-50 */
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      }
-    </style>
-  </head>
-  <body>
-    <!-- Di sinilah komponen React App.jsx kita akan dimasukkan secara automatik -->
-    <div id="root"></div>
-    
-    <!-- Fail skrip kemasukan (entry point). 
-         Jika cikgu guna VITE, pastikan fail main.jsx / index.jsx dipautkan di sini -->
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
 </html>
