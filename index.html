@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ms">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Meta viewport sangat penting supaya aplikasi nampak cantik dan responsif di handphone -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>e-RPH Cikgu Sabariah</title>
+    <meta name="description" content="Aplikasi pengurusan e-RPH untuk memudahkan guru menjana dan merekod RPH." />
+    
+    <!-- Tailwind CSS (Guna CDN untuk pemasangan pantas jika tidak menggunakan build tool seperti Vite) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Konfigurasi warna tema Tailwind (Pilihan) -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              // Boleh tambah warna kustom di sini jika perlu
+            }
+          }
+        }
+      }
+    </script>
+    
+    <style>
+      /* Memastikan latar belakang aplikasi menutupi skrin sepenuhnya */
+      body {
+        margin: 0;
+        background-color: #f8fafc; /* slate-50 */
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Di sinilah komponen React App.jsx kita akan dimasukkan secara automatik -->
+    <div id="root"></div>
+    
+    <!-- Fail skrip kemasukan (entry point). 
+         Jika cikgu guna VITE, pastikan fail main.jsx / index.jsx dipautkan di sini -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
