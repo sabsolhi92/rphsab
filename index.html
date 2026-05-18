@@ -28,10 +28,8 @@
   </style>
 </head>
 <body>
-  <!-- Kontena untuk Aplikasi React -->
   <div id="root"></div>
 
-  <!-- Skrip Utama Aplikasi -->
   <script type="text/babel">
     const { useState, useEffect } = React;
 
@@ -53,6 +51,36 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
     const appIdStr = 'e-rph-sabariah';
+
+    // --- DATA JADUAL WAKTU CIKGU SABARIAH 2026 ---
+    const jadualWaktu = {
+      0: [], // Ahad
+      1: [ // Isnin
+        { kelas: '6BD', masa: '0710-0810\n1030-1130' },
+        { kelas: '5BD', masa: '0810-0910\n1200-1300' },
+        { kelas: '3BD', masa: '0910-1030' }
+      ],
+      2: [ // Selasa
+        { kelas: '5BD', masa: '0910-0940\n1000-1030' },
+        { kelas: '3BD', masa: '1130-1230' }
+      ],
+      3: [ // Rabu
+        { kelas: '6BD', masa: '0710-0810' },
+        { kelas: '5BD', masa: '0810-0910' },
+        { kelas: '6BP', masa: '1000-1100' },
+        { kelas: '3BD', masa: '1200-1230' }
+      ],
+      4: [ // Khamis
+        { kelas: '3BD', masa: '0740-0840' },
+        { kelas: '5BD', masa: '1000-1100' },
+        { kelas: '6BD', masa: '1100-1200' }
+      ],
+      5: [ // Jumaat
+        { kelas: '3BD', masa: '0840-0940' },
+        { kelas: '6BD', masa: '0940-1030' }
+      ],
+      6: [] // Sabtu
+    };
 
     function App() {
       // --- STATE PENGURUSAN ---
@@ -77,7 +105,6 @@
         const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
         const unsubscribe = rphRef.onSnapshot((snapshot) => {
           const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          // Susun data: yang terbaru (tarikh dicipta) di atas
           records.sort((a, b) => b.createdAt - a.createdAt);
           setRphList(records);
         }, (error) => {
@@ -159,50 +186,238 @@
         </div>
       );
 
-      const PlaceholderView = ({ title, bgClass }) => (
-        <div className="flex flex-col min-h-screen bg-slate-50">
-          <Header title={title} />
-          <div className="flex-1 p-4 flex items-center justify-center">
-            <div className="text-center bg-white p-8 rounded-2xl shadow-sm border border-gray-100 max-w-sm w-full">
-              <div className={`w-16 h-16 ${bgClass} rounded-full flex items-center justify-center mx-auto mb-4`}><span className="text-white text-2xl font-bold">!</span></div>
-              <h2 className="text-xl font-bold text-gray-800 mb-2">Modul {title}</h2>
-              <p className="text-gray-500 mb-6">Modul ini akan dibangunkan seterusnya.</p>
-            </div>
-          </div>
-        </div>
-      );
+      // --- CUTI DAN PROGRAM ---
+      const CutiProgramView = () => {
+        const [tarikhRaw, setTarikhRaw] = useState(new Date().toISOString().split('T')[0]);
+        const [formData, setFormData] = useState({
+          minggu: '',
+          tarikh: new Date().toLocaleDateString('en-GB').replace(/\//g, '.'),
+          hari: 'ISNIN',
+          tajuk: ''
+        });
+        const [imagePreview, setImagePreview] = useState(null);
+        const [imageError, setImageError] = useState('');
+        const [copyStatus, setCopyStatus] = useState('');
+        const [isSaving, setIsSaving] = useState(false);
+        const [saveStatus, setSaveStatus] = useState('');
 
-      const KehadiranView = () => {
-        const [tarikh, setTarikh] = useState(new Date().toISOString().split('T')[0]);
-        const [kelas, setKelas] = useState('3BD');
-        const senaraiKelas = ['3BD', '4BD', '5BD', '6BD', '6BP'];
+        useEffect(() => {
+          const d = new Date(tarikhRaw);
+          const dayIdx = d.getDay();
+          const namaHari = ['AHAD', 'ISNIN', 'SELASA', 'RABU', 'KHAMIS', 'JUMAAT', 'SABTU'][dayIdx];
+          setFormData(prev => ({ ...prev, tarikh: tarikhRaw.split('-').reverse().join('.'), hari: namaHari }));
+        }, [tarikhRaw]);
+
+        const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+        const handleImageUpload = (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            if (file.size > 700000) { 
+               setImageError("Nota: Saiz gambar agak besar. Ia akan berjaya disalin ke Google Docs, tetapi mungkin tidak akan disimpan ke rekod Cloud untuk menjimatkan ruang.");
+            } else {
+               setImageError("");
+            }
+            const reader = new FileReader();
+            reader.onloadend = () => setImagePreview(reader.result);
+            reader.readAsDataURL(file);
+          }
+        };
+
+        const copyToClipboard = () => {
+          const tableEl = document.getElementById('cuti-table-export');
+          const range = document.createRange();
+          range.selectNode(tableEl);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          try {
+            document.execCommand('copy');
+            setCopyStatus('success');
+            setTimeout(() => setCopyStatus(''), 5000);
+          } catch (err) { setCopyStatus('error'); }
+          sel.removeAllRanges();
+        };
+
+        const handleSave = async () => {
+          if (!user) return;
+          setIsSaving(true);
+          try {
+            const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
+            await rphRef.add({ 
+              ...formData, subjek: 'Cuti / Program Sekolah', kelas: '-', tahun: '-', tema: formData.tajuk,
+              image: imagePreview && imagePreview.length < 1000000 ? imagePreview : null, createdAt: Date.now() 
+            });
+            setSaveStatus('success');
+            setTimeout(() => setSaveStatus(''), 3000);
+          } catch (error) { setSaveStatus('error'); }
+          setIsSaving(false);
+        };
+
         return (
           <div className="flex flex-col min-h-screen bg-slate-50">
-            <Header title="Kehadiran Murid" />
-            <div className="p-4 flex-1">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-4 space-y-5">
-                <div>
-                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-calendar mr-2"></i> Tarikh</label>
-                  <input type="date" value={tarikh} onChange={(e) => setTarikh(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-pink-500 focus:border-pink-500 outline-none transition-all" />
+            <Header title="Cuti & Program Sekolah" />
+            <div className="p-4 flex-1 max-w-3xl mx-auto w-full space-y-6">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+                <h3 className="font-bold text-gray-800 border-b pb-2 mb-4">Maklumat Cuti / Program</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Minggu</label><input type="text" name="minggu" value={formData.minggu} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" /></div>
                 </div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tajuk Program / Catatan Cuti</label><input type="text" name="tajuk" value={formData.tajuk} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" placeholder="Cth: Cuti Hari Pekerja" /></div>
                 <div>
-                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-users mr-2"></i> Kelas</label>
-                  <div className="flex flex-wrap gap-2">
-                    {senaraiKelas.map(k => (
-                      <button key={k} onClick={() => setKelas(k)} className={`px-4 py-2 rounded-xl font-medium transition-colors ${kelas === k ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{k}</button>
-                    ))}
-                  </div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Muat Naik Gambar / Poster</label>
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full border border-dashed border-gray-300 rounded-lg p-4 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer" />
+                  {imageError && <p className="text-xs text-amber-600 mt-2"><i className="fas fa-exclamation-circle"></i> {imageError}</p>}
                 </div>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-                <i className="fas fa-users text-4xl text-gray-300 mb-3"></i>
-                <p className="text-gray-500">Senarai nama murid untuk kelas <strong>{kelas}</strong> pada tarikh <strong>{tarikh}</strong>.</p>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
+                 <h3 className="font-bold text-gray-800 mb-4">Pratonton Jadual (Boleh Disalin)</h3>
+                 <div className="min-w-[700px] pointer-events-none select-none bg-white p-2">
+                   <table id="cuti-table-export" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Arial, sans-serif', fontSize: '10pt', color: 'black' }}>
+                    <tbody>
+                      <tr><td colSpan="6" style={{ border: '1px solid black', padding: '8px', textAlign: 'center', fontWeight: 'bold', backgroundColor: '#eef2ff' }}>CUTI UMUM / PROGRAM SEKOLAH</td></tr>
+                      <tr>
+                        <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#eef2ff', width: '15%' }}>MINGGU</td>
+                        <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center', width: '10%' }}>{formData.minggu}</td>
+                        <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#eef2ff', width: '15%', textAlign: 'center' }}>TARIKH</td>
+                        <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center', width: '30%' }}>{formData.tarikh}</td>
+                        <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#eef2ff', width: '15%', textAlign: 'center' }}>HARI</td>
+                        <td style={{ border: '1px solid black', padding: '8px', textAlign: 'center', width: '15%' }}>{formData.hari}</td>
+                      </tr>
+                      <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#eef2ff' }}>TAJUK / CATATAN</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', whiteSpace: 'pre-wrap' }}>{formData.tajuk}</td></tr>
+                      <tr>
+                        <td colSpan="6" style={{ border: '1px solid black', padding: '20px', textAlign: 'center', minHeight: '400px', verticalAlign: 'middle' }}>
+                          {imagePreview ? <img src={imagePreview} alt="Gambar Program" style={{ maxWidth: '100%', maxHeight: '600px', display: 'block', margin: '0 auto' }} /> : <span style={{ color: '#999', fontStyle: 'italic' }}>[ Ruangan Gambar - Sila Muat Naik Poster/Gambar Di Atas ]</span>}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                 </div>
+              </div>
+              <div className="flex gap-3 pb-8">
+                <button onClick={copyToClipboard} className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-semibold shadow-sm transition-all ${copyStatus === 'success' ? 'bg-green-600' : 'bg-amber-600 hover:bg-amber-700 active:scale-95'}`}>
+                  {copyStatus === 'success' ? <><i className="fas fa-check"></i> Berjaya Disalin!</> : <><i className="fas fa-copy"></i> Salin ke Google Docs</>}
+                </button>
+                <button onClick={handleSave} disabled={isSaving} className={`flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-colors active:scale-95 disabled:opacity-70 ${saveStatus === 'success' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>
+                  {isSaving ? <i className="fas fa-spinner fa-spin"></i> : saveStatus === 'success' ? <i className="fas fa-check"></i> : <i className="fas fa-save"></i>} {saveStatus === 'success' ? 'Disimpan' : 'Simpan'}
+                </button>
               </div>
             </div>
           </div>
         );
       };
 
+      // --- KEHADIRAN MURID ---
+      const KehadiranView = () => {
+        const senaraiMurid = {
+          '3BD': ['ALEXZANDER NGAOH ANAK MOSES KUDI', 'NATALIE WEE YAN TONG'],
+          '4BD': ['ISABELL EVE WAN AJANG', 'IZZ IBTISAM BIN AHMAD MUJAHID', 'IZZNURIN ATYA BINTI IZMET ISKANDAR'],
+          '5BD': ['DAREN TING TIAN ZJUN', 'HAIDIEL SHAHRY BIN SOFIZAN'],
+          '6BD': ['ATHENA KHO XUAN', 'MIRZHAN HAMIZI BIN MOHAMMAD FAIZAL'],
+          '6BP': ['EVANGELINE KAREN PAULUS', 'IAN MCKENZIE ANAK MAT', 'IHYA ZAFIRAH BINTI HANAFIE', 'IRFAN BIN MOHAMMAD EZZARDDIN', 'JOSELINE JONG SHI YING', 'MOHAMMAD IZZUANDIE BIN ABDULLAH', 'NUR AINA BINTI BARAHIM', 'SURAIYA KHAIRINA BINTI KHAIRUL']
+        };
+
+        const senaraiKelasAsal = ['3BD', '4BD', '5BD', '6BD', '6BP'];
+        const [tarikh, setTarikh] = useState(new Date().toISOString().split('T')[0]);
+        const [availableKelas, setAvailableKelas] = useState(senaraiKelasAsal);
+        const [kelas, setKelas] = useState('');
+        const [kehadiranState, setKehadiranState] = useState({});
+        const [isSaving, setIsSaving] = useState(false);
+        const [saveStatus, setSaveStatus] = useState('');
+
+        useEffect(() => {
+          const d = new Date(tarikh);
+          const dayIdx = d.getDay();
+          const jadualHari = jadualWaktu[dayIdx] || [];
+          let kelasHariIni = senaraiKelasAsal;
+          if (jadualHari.length > 0) {
+             kelasHariIni = [...new Set(jadualHari.map(j => j.kelas))];
+          }
+          setAvailableKelas(kelasHariIni);
+          if (!kelasHariIni.includes(kelas)) {
+             setKelas(kelasHariIni[0]);
+          }
+        }, [tarikh]);
+
+        useEffect(() => {
+          if (!kelas || !senaraiMurid[kelas]) return;
+          const initialState = {};
+          senaraiMurid[kelas].forEach(murid => { initialState[murid] = true; });
+          setKehadiranState(initialState);
+        }, [kelas]);
+
+        const toggleHadir = (murid) => setKehadiranState(prev => ({ ...prev, [murid]: !prev[murid] }));
+        const totalHadir = Object.values(kehadiranState).filter(v => v === true).length;
+        const totalMurid = senaraiMurid[kelas] ? senaraiMurid[kelas].length : 0;
+
+        const handleSave = async () => {
+          if (!user) return;
+          setIsSaving(true);
+          try {
+            await db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('kehadiranRecords').add({
+              tarikh, kelas, rekod: kehadiranState, totalHadir, totalMurid, createdAt: Date.now()
+            });
+            setSaveStatus('success');
+            setTimeout(() => setSaveStatus(''), 3000);
+          } catch (error) { setSaveStatus('error'); }
+          setIsSaving(false);
+        };
+
+        return (
+          <div className="flex flex-col min-h-screen bg-slate-50">
+            <Header title="Kehadiran Murid" />
+            <div className="p-4 flex-1 max-w-3xl mx-auto w-full pb-24">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6 space-y-5">
+                <div>
+                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-calendar mr-2"></i> Tarikh</label>
+                  <input type="date" value={tarikh} onChange={(e) => setTarikh(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-pink-500 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-users mr-2"></i> Pilih Kelas (Mengikut Jadual Waktu)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {availableKelas.map(k => (
+                      <button key={k} onClick={() => setKelas(k)} className={`px-4 py-2 rounded-xl font-medium transition-all ${kelas === k ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{k}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {kelas && senaraiMurid[kelas] && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+                  <div className="bg-pink-50 px-4 py-3 border-b border-pink-100 flex justify-between items-center">
+                    <span className="font-bold text-pink-800 text-sm">Senarai Murid ({kelas})</span>
+                    <span className="text-xs font-semibold bg-white text-pink-600 px-2 py-1 rounded-md shadow-sm">
+                      Kehadiran: {totalHadir} / {totalMurid}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {senaraiMurid[kelas].map((murid, idx) => (
+                      <div key={idx} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-3 pr-4">
+                          <div className="w-7 h-7 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">{idx + 1}</div>
+                          <span className="font-semibold text-gray-700 text-sm leading-tight">{murid}</span>
+                        </div>
+                        <button onClick={() => toggleHadir(murid)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm ${kehadiranState[murid] ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                          {kehadiranState[murid] ? <><i className="fas fa-check mr-1"></i> Hadir</> : <><i className="fas fa-times mr-1"></i> Tidak Hadir</>}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={handleSave} disabled={isSaving} className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold shadow-md transition-all active:scale-95 disabled:opacity-70 ${saveStatus === 'success' ? 'bg-green-500 text-white' : 'bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:shadow-lg'}`}>
+                {isSaving ? <i className="fas fa-spinner fa-spin"></i> : saveStatus === 'success' ? <i className="fas fa-check-circle text-xl"></i> : <i className="fas fa-save text-xl"></i>} 
+                {saveStatus === 'success' ? 'Rekod Disimpan!' : 'Simpan Rekod Kehadiran'}
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      // --- REKOD RPH & SEMAKAN MINGGUAN ---
       const RekodRPHView = () => {
         const [filterSubjek, setFilterSubjek] = useState('Semua');
         const [filterMinggu, setFilterMinggu] = useState('Semua');
@@ -220,9 +435,7 @@
           try {
             await db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords').doc(id).delete();
             setDeleteConfirmId(null);
-          } catch (err) {
-            console.error("Gagal memadam:", err);
-          }
+          } catch (err) { console.error("Gagal memadam:", err); }
         };
 
         return (
@@ -236,6 +449,7 @@
                     <option value="Semua">Semua Subjek</option>
                     <option value="Bahasa Melayu">Bahasa Melayu</option>
                     <option value="TMK">TMK</option>
+                    <option value="Cuti / Program Sekolah">Cuti / Program</option>
                   </select>
                 </div>
                 <div className="min-w-[120px] flex-1">
@@ -253,9 +467,9 @@
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-md font-bold">M{rekod.minggu}</span>
-                        <span className="text-sm font-semibold text-gray-800">{rekod.subjek} ({rekod.kelas})</span>
+                        <span className="text-sm font-semibold text-gray-800">{rekod.subjek} {rekod.kelas !== '-' && `(${rekod.kelas})`}</span>
                       </div>
-                      <h4 className="font-medium text-gray-700 text-sm whitespace-pre-wrap">{rekod.tema?.split('-')[0]}</h4>
+                      <h4 className="font-medium text-gray-700 text-sm whitespace-pre-wrap">{rekod.tema?.split('-')[0] || rekod.tema}</h4>
                       <p className="text-xs text-gray-400 mt-1"><i className="fas fa-calendar mr-1"></i> {rekod.tarikh}</p>
                     </div>
                     <div className="flex gap-2">
@@ -272,7 +486,7 @@
                 )) : (
                   <div className="bg-white p-8 rounded-2xl text-center shadow-sm border border-gray-100 text-gray-400">
                     <i className="fas fa-folder-open text-4xl mb-3 opacity-50 block mx-auto"></i>
-                    <p>Tiada rekod RPH ditemui.</p>
+                    <p>Tiada rekod ditemui.</p>
                   </div>
                 )}
               </div>
@@ -371,8 +585,8 @@
         );
       };
 
+      // --- BORANG RPH ---
       const RphFormView = () => {
-        // --- DATA DSKP & REFLEKSI ---
         const getStudentsForReflection = (subject, year) => {
           if (subject === 'Bahasa Melayu') {
             if (year === 'Tahun 6') return ['Athena', 'Hamizi'];
@@ -398,6 +612,19 @@
           { tema: "TEMA 8: KELESTARIAN ALAM", units: ["Unit 22: Alam Bersih Hidup Sihat", "Unit 23: Cintai Alam Sekitar", "Unit 24: Hutan Bakau"] },
           { tema: "TEMA 9: PERTANIAN DAN PENTERNAKAN", units: ["Unit 25: Mari Bertani", "Unit 26: Penternak Muda", "Unit 27: Alatan Pertanian Moden"] },
           { tema: "TEMA 10: EKONOMI, KEUSAHAWANAN DAN PENGURUSAN KEWANGAN", units: ["Unit 28: Bijak Berniaga", "Unit 29: Saya Suka Berniaga", "Unit 30: Berjimat Amalan Mulia"] }
+        ];
+
+        const tajukBMTahun4 = [
+          { tema: "TEMA 1: KEKELUARGAAN", units: ["Unit 1: Bersepadu Ceriakan Kehidupan", "Unit 2: Keriangan Keluarga", "Unit 3: Sentiasa Bersama"] },
+          { tema: "TEMA 2: KESIHATAN DAN KEBERSIHAN", units: ["Unit 4: Amalan Hidup Sihat", "Unit 5: Bersih dan Menawan", "Unit 6: Kesihatan Diri"] },
+          { tema: "TEMA 3: KESELAMATAN", units: ["Unit 7: Utamakan Keselamatan", "Unit 8: Awasi Diri", "Unit 9: Bersedia Selalu"] },
+          { tema: "TEMA 4: KEMASYARAKATAN", units: ["Unit 10: Bersatu Padu", "Unit 11: Kempen Masyarakat", "Unit 12: Prihatin Membawa Berkat"] },
+          { tema: "TEMA 5: KEBUDAYAAN, KESENIAN DAN ESTETIKA", units: ["Unit 13: Seni Warisan", "Unit 14: Indahnya Seni", "Unit 15: Hidup Berbudaya"] },
+          { tema: "TEMA 6: PATRIOTISME DAN KEWARGANEGARAAN", units: ["Unit 16: Bangga Menjadi Anak Malaysia", "Unit 17: Wira Negara", "Unit 18: Sejarah Negara"] },
+          { tema: "TEMA 7: KELESTARIAN ALAM", units: ["Unit 19: Cintai Alam Kitar", "Unit 20: Pelihara Alam Kita", "Unit 21: Tanggungjawab Kita"] },
+          { tema: "TEMA 8: PERTANIAN DAN PENTERNAKAN", units: ["Unit 22: Usaha Gigih", "Unit 23: Sumber Rezeki", "Unit 24: Pembangunan Pertanian dan Penternakan"] },
+          { tema: "TEMA 9: SAINS, TEKNOLOGI DAN INOVASI", units: ["Unit 25: Keajaiban Sains", "Unit 26: Reka Cipta dan Teknologi", "Unit 27: Hasil Inovasi"] },
+          { tema: "TEMA 10: EKONOMI, KEUSAHAWANAN DAN PENGURUSAN KEWANGAN", units: ["Unit 28: Keusahawanan", "Unit 29: Usahawan Muda", "Unit 30: Urus Kewangan"] }
         ];
 
         const tajukBMTahun5 = [
@@ -426,10 +653,88 @@
           { tema: "TEMA 10: INTEGRITI", units: ["Unit 28: Kejujuran", "Unit 29: Prinsip Hidup", "Unit 30: Amanah"] }
         ];
 
+        // --- DATA DSKP BAHASA MELAYU TAHUN 3 ---
+        const dskpBMTahun3 = [
+          { sk: "1.1 Mendengar/ melihat, mengecam sebutan/ isyarat serta memberikan respons.", sp: ["1.1.1 Mendengar/ melihat, mengecam sebutan/ isyarat dan menyebut/ berisyarat dengan betul dan tepat: (i) ayat tunggal (ii) ayat majmuk", "1.1.2 Mendengar sebutan/ mengecam isyarat, memahami dan memberikan respons terhadap: (i) suruhan dan permintaan (ii) silaan dan larangan", "1.1.3 Mendengar/ melihat, mentafsir dan memberi respons terhadap: (i) soalan bertumpu (ii) Soalan bercapah"] },
+          { sk: "1.2 Mendengar/ melihat, mengecam sebutan/ berisyarat untuk menyampaikan maklumat dan idea bagi pelbagai tujuan.", sp: ["1.2.1 Bertutur/ berisyarat untuk menjelaskan dan menilai sesuatu perkara secara bertatasusila mengikut konteks.", "1.2.2 Menjelaskan dan membanding beza maklumat tersurat menggunakan idea yang kritis dan kreatif secara bertutur/ berisyarat.", "1.2.3 Bersoal jawab secara komunikasi seluruh untuk mendapatkan dan menyampaikan maklumat."] },
+          { sk: "2.1 Asas membaca (lisan/ isyarat) dan memahami bahan yang dibaca.", sp: ["2.1.1 Membaca (lisan/ isyarat) dengan isyarat/sebutan yang betul dan sesuai: (i) ayat tunggal dan ayat majmuk (ii) perenggan (iii) petikan", "2.1.2 Membaca (lisan/ isyarat) dengan sebutan yang betul dan intonasi yang sesuai dan memahami: (i) pelbagai jenis ayat (ii) perenggan (iii) petikan"] },
+          { sk: "2.2 Membaca (lisan/ isyarat), memahami dan menaakul bahan grafik dan bukan grafik.", sp: ["2.2.1 Membaca (lisan/ isyarat), memahami dan mengecam: (i) maksud kosa kata (ii) idea utama dan idea sampingan (iii) idea keseluruhan"] },
+          { sk: "2.3 Membaca (lisan/ isyarat) dan mengapresiasi karya sastera dan bukan sastera.", sp: ["2.3.1 Membaca (lisan/ isyarat), mengenal pasti dan menerangkan kandungan teks daripada bahan sastera dan bukan sastera; (i) label (ii) manual (iii) cerita (iv) pantun", "2.3.2 Membaca (lisan/ isyarat) dan mengapresiasikan karya sastera dan bukan sastera secara lisan atau komunikasi seluruh; (i) label (ii) manual (iii) cerita (iv) pantun"] },
+          { sk: "3.1 Asas menulis.", sp: ["3.1.1 Menulis secara mekanis menggunakan tulisan berangkai dalam bentuk: (i) huruf (ii) perkataan (iii) frasa"] },
+          { sk: "3.2 Menulis perkataan, frasa dan ayat yang bermakna.", sp: ["3.2.1 Membina dan menulis: (i) ayat (ii) perenggan", "3.2.2 Menghasilkan jawapan pemahaman secara kritis berdasarkan soalan: (i) bertumpu (ii) bercapah", "3.2.3 Membanding bezakan dan mencatat maklumat tentang sesuatu perkara.", "3.2.4 Menulis sesuatu yang diimlakkan: (i) ayat"] },
+          { sk: "3.3 Menghasilkan penulisan naratif dan bukan naratif.", sp: ["3.3.1 Menghasilkan kerangka dan penulisan karangan naratif dan bukan naratif secara: (i) berpandu (ii) separa berpandu", "3.3.2 Mengedit dan memurnikan hasil penulisan daripada aspek: (i) ejaan, tanda baca dan penggunaan imbuhan (ii) penggunaan kata (iii) struktur ayat"] },
+          { sk: "4.1 Mengaplikasikan unsur keindahan dan kesantunan bahasa dalam bahan sastera.", sp: ["4.1.1 Bercerita secara komunikasi seluruh dengan menggunakan gaya bahasa yang indah dan santun: (i) simpulan bahasa (ii) bandingan semacam (iii) pepatah"] },
+          { sk: "4.2 Menghayati keindahan dan kesantunan bahasa dalam bahan sastera.", sp: ["4.2.1 Melafazkan/ mengisyaratkan pantun yang mengandungi bahasa yang indah dan menjelaskan maksud.", "4.2.2 Menyanyikan/ mengisyaratkan lagu mengikut irama kanak-kanak dan lagu rakyat serta menjelaskan bahasa yang indah dalam lirik lagu.", "4.2.3 Melagukan syair dan mendeklamasikan sajak serta memahami maksud: (i) syair (ii) sajak"] },
+          { sk: "4.3 Menghasilkan bahan sastera dengan menyerapkan keindahan dan kesantunan bahasa serta mempersembahkannya secara kreatif.", sp: ["4.3.1 Mencipta bahan sastera secara berpandu dan mempersembahkan menggunakan komunikasi seluruh: (i) pantun empat kerat (ii) sajak", "4.3.2 Mengubahsuai cerita yang mempunyai unsur pengajaran secara berpandu dan mempersembahkan cerita secara kreatif.", "4.3.3 Mengubah suai seni kata lagu secara berpandu dan mempersembahkan lagu kanak-kanak secara komunikasi seluruh."] },
+          { sk: "5.1 Memahami dan menggunakan golongan kata mengikut konteks.", sp: ["5.1.1 Memahami dan menggunakan golongan kata nama mengikut konteks: (i) kata nama am dan kata nama khas (ii) kata ganti nama (iii) penjodoh bilangan", "5.1.2 Memahami dan menggunakan kata kerja mengikut konteks: (i) kata kerja aktif transitif dan kata kerja tak transitif (ii) kata kerja pasif", "5.1.3 Memahami dan menggunakan kata adjektif mengikut konteks: (i) jarak (ii) perasaan (iii) pancaindera", "5.1.4 Memahami dan menggunakan kata tugas mengikut konteks: (i) kata hubung (ii) kata sendi nama (iii) kata arah (iv) kata tanya (v) kata perintah (vi) kata seru (vii) kata pemeri (viii) kata penguat (ix) kata nafi (x) kata bantu (xi) kata bilangan"] },
+          { sk: "5.2 Memahami dan menggunakan pembentukan kata mengikut konteks.", sp: ["5.2.1 Memahami dan menggunakan kata mengikut konteks: (i) kata dasar (ii) kata berimbuhan awalan (iii) kata berimbuhan akhiran", "5.2.2 Memahami dan menggunakan kata majmuk mengikut konteks.", "5.2.3 Memahami dan menggunakan kata ganda mengikut konteks: (i) kata ganda penuh (ii) kata ganda separa (iii) kata ganda berentak"] },
+          { sk: "5.3 Memahami dan membina ayat mengikut konteks.", sp: ["5.3.1 Memahami dan membina ayat mengikut konteks: (i) ayat seruan (ii) ayat perintah (iii) ayat tanya dengan kata tanya (iv) ayat tanya tanpa kata tanya", "5.3.2 Memahami dan menggunakan ayat mengikut konteks: (i) ayat tunggal (ii) ayat majmuk"] }
+        ];
+
+        // --- DATA DSKP BAHASA MELAYU TAHUN 4 ---
+        const dskpBMTahun4 = [
+          { sk: "1.1 Mendengar atau melihat dan mengecam isyarat serta memberikan respons semasa berkomunikasi dalam situasi formal dan tidak formal.", sp: ["1.1.1 Mendengar atau melihat, mengecam sebutan atau isyarat dan menyebut atau mengisyarat sesuatu yang diujarkan semula dalam situasi yang tidak formal.", "1.1.2 Mendengar atau melihat, memahami dan memberikan respon terhadap ujaran yang terdapat dalam situasi tidak formal.", "1.1.3 Mendengar atau melihat, mentafsir dan memberikan respons secara kritis terhadap soalan."] },
+          { sk: "1.2 Bertutur atau berisyarat untuk menyampaikan maklumat dan idea bagi pelbagai tujuan.", sp: ["1.2.1 Bertutur atau berisyarat untuk menilai dan memberikan alasan tentang sesuatu perkara secara bertatasusila mengikut konteks.", "1.2.2 Menjelaskan dan membanding beza maklumat tersurat dan tersirat dengan menggunakan idea yang kritis dan kreatif.", "1.2.3 Bersoal jawab untuk mendapatkan penjelasan."] },
+          { sk: "1.3 Bercerita dan menceritakan sesuatu perkara dengan sebutan atau isyarat yang betul.", sp: ["1.3.1 Bercerita dengan sebutan atau isyarat yang sesuai.", "1.3.2 Menceritakan sesuatu bahan yang ditonton dengan sebutan atau isyarat yang sesuai."] },
+          { sk: "2.1 Asas membaca (lisan atau isyarat) dan memahami.", sp: ["2.1.1 Membaca (lisan atau isyarat) petikan dengan sebutan atau isyarat yang betul dan memahami petikan."] },
+          { sk: "2.2 Membaca (lisan atau isyarat), memahami dan menaakul bahan multimedia.", sp: ["2.2.1 Membaca (lisan atau isyarat) dan memahami bahan grafik daripada multimedia untuk membuat gambaran."] },
+          { sk: "2.3 Membaca (lisan atau isyarat) dan mengapresiasi karya sastera dan bukan sastera.", sp: ["2.3.1 Membaca (lisan atau isyarat) dan menganalisis kandungan karya sastera dan bukan sastera.", "2.3.2 Membaca (lisan atau isyarat) karya sastera dan bukan sastera dengan gaya penyampaian yang sesuai."] },
+          { sk: "3.1 Asas menulis.", sp: ["3.1.1 Menulis ayat secara mekanis menggunakan tulisan berangkai."] },
+          { sk: "3.2 Menulis perkataan, frasa dan ayat yang bermakna.", sp: ["3.2.1 Membina dan menulis, ayat dan perenggan daripada bahan multimedia.", "3.2.2 Menghasilkan jawapan pemahaman berdasarkan soalan bertumpu dan bercapah secara kritis dan kreatif.", "3.2.3 Menganalisis dan mencatat maklumat tentang sesuatu perkara yang dirujuk.", "3.2.4 Menulis ayat dalam perenggan yang diimlakkan."] },
+          { sk: "3.3 Menghasilkan penulisan.", sp: ["3.3.1 Mendraf dan menghasilkan penulisan imaginatif dan deskriptif.", "3.3.2 Mengedit dan memurnikan ayat daripada aspek ejaan, tanda baca dan penggunaan imbuhan."] },
+          { sk: "4.1 Mengaplikasikan unsur keindahan dan kesantunan bahasa dalam bahan sastera.", sp: ["4.1.1 Bercerita atau berisyarat dan mengujarkan dialog yang mengandungi peribahasa secara komunikasi seluruh."] },
+          { sk: "4.2 Menghayati keindahan dan kesantunan bahasa dalam bahan sastera.", sp: ["4.2.1 Mendeklamasikan atau mengisyaratkan dan menjelaskan maksud sajak.", "4.2.2 Menyanyikan atau mengisyaratkan lagu mengikut irama lagu rakyat secara komunikasi seluruh dan menjelaskan maksud lirik lagu."] },
+          { sk: "4.3 Menghasilkan bahan sastera dengan menyerapkan keindahan dan kesantunan bahasa serta mempersembahkannya secara kreatif.", sp: ["4.3.1 Mengubah suai puisi secara berpandu, dan mempersembahkannya secara kreatif dengan menggunakan komunikasi seluruh.", "4.3.2 Mengubah suai cerita secara berpandu dan mempersembahkannya secara kreatif dengan menggunakan komunikasi seluruh.", "4.3.3 Mengubah suai seni kata lagu secara berpandu dan mempersembahkannya secara kreatif dengan menggunakan komunikasi seluruh."] },
+          { sk: "4.4 Mengaplikasikan, menghayati dan menghasilkan unsur keindahan dalam seni tulisan jawi.", sp: ["4.4.1 Mengenal, mengecam dan menyebut atau isyarat huruf tunggal yang ditulis mengikut tulisan jawi dalam simpulan bahasa dan mempersembahkannya.", "4.4.2 Mempersembahkan keindahan seni tulisan jawi melalui simpulan bahasa."] },
+          { sk: "5.1 Memahami dan menggunakan golongan kata mengikut konteks.", sp: ["5.1.1 Memahami dan menggunakan kata nama mengikut konteks tidak formal; (i) kata nama am (ii) kata nama khas (iii) kata ganti nama (iv) penjodoh bilangan", "5.1.2 Memahami dan menggunakan kata kerja mengikut konteks; (i) kata kerja aktif - transitif dan tak transitif (ii) kata kerja pasif", "5.1.3 Memahami dan menggunakan kata adjektif mengikut konteks; (i) cara (ii) perasaan (iii) pancaindera (iv) waktu", "5.1.4 Memahami dan menggunakan kata tugas mengikut konteks; (i) kata hubung (ii) kata sendi nama (iii) kata nafi (iv) kata bilangan"] },
+          { sk: "5.2 Memahami dan menggunakan pembentukan kata mengikut konteks.", sp: ["5.2.1 Memahami dan menggunakan kata berimbuhan mengikut konteks; (i) kata imbuhan awalan (ii) kata imbuhan akhiran (iii) kata imbuhan apitan", "5.2.2 Memahami dan menggunakan kata majmuk mengikut konteks; (i) kata majmuk bebas (ii) kata majmuk mantap", "5.2.3 Memahami dan menggunakan kata ganda mengikut konteks; (i) kata ganda penuh (ii) kata ganda separa"] },
+          { sk: "5.3 Memahami dan membina ayat mengikut konteks.", sp: ["5.3.1 Memahami dan membina pelbagai ayat tunggal dan ayat majmuk mengikut konteks.", "5.3.2 Memahami dan membina pelbagai jenis ayat mengikut konteks; (i) ayat penyata (ii) ayat tanya", "5.3.3 Memahami dan membina ayat aktif.", "5.3.4 Memahami dan membina ayat susunan biasa dan susunan songsang."] }
+        ];
+
+        // --- DATA DSKP BAHASA MELAYU TAHUN 5 ---
+        const dskpBMTahun5 = [
+          { sk: "1.1 Mendengar atau mengecam isyarat serta memberikan respons semasa berkomunikasi dalam situasi formal dan tidak formal.", sp: ["1.1.1 Mendengar atau melihat, mengecam sebutan atau isyarat dan menyebut atau mengisyarat semula ujaran yang terdapat dalam situasi formal.", "1.1.2 Mendengar atau melihat, memahami dan memberikan respons terhadap maklumat yang diujarkan dalam situasi formal.", "1.1.3 Mendengar atau melihat, mentafsir dan memberikan respons terhadap soalan secara kritis dan kreatif."] },
+          { sk: "1.2 Bertutur atau berisyarat untuk menyampaikan maklumat dan idea bagi pelbagai tujuan.", sp: ["1.2.1 Bertutur atau berisyarat untuk menyatakan pertimbangan dan keputusan tentang bahan multimedia secara bertatasusila mengikut konteks.", "1.2.2 Bertutur atau berisyarat untuk menghuraikan maklumat tersurat dan tersirat yang dikenal pasti dengan menggunakan idea yang kritis dan kreatif.", "1.2.3 Bersoal jawab untuk menjana idea tentang sesuatu perkara."] },
+          { sk: "1.3 Bercerita dan menceritakan perkara yang didengar, ditonton dan dibaca dengan sebutan atau isyarat yang betul.", sp: ["1.3.1 Bercerita dengan sebutan atau isyarat yang betul dan gaya yang sesuai.", "1.3.2 Menceritakan sesuatu perkara yang didengar, ditonton dan dibaca dengan sebutan atau isyarat yang betul dan gaya yang sesuai."] },
+          { sk: "2.1 Asas membaca secara lisan atau isyarat dan memahami.", sp: ["2.1.1 Membaca secara lisan atau isyarat dan memahami maklumat tersurat dan tersirat untuk memberikan respons.", "2.1.2 Membaca dan merujuk kamus serta media elektronik untuk mencari makna, perkataan dan meneliti ejaan yang tepat mengikut susunan perkataan."] },
+          { sk: "2.2 Membaca secara lisan atau isyarat, memahami dan menaakul bahan multimedia.", sp: ["2.2.1 Membaca secara lisan atau isyarat dan memahami maklumat berdasarkan bahan multimedia untuk membuat pertimbangan dan keputusan."] },
+          { sk: "2.3 Membaca secara lisan atau isyarat dan mengapresiasi karya sastera dan bukan sastera.", sp: ["2.3.1 Membaca secara lisan atau isyarat dan meneliti kandungan teks karya bukan sastera dan karya sastera untuk membuat rumusan.", "2.3.2 Membaca secara lisan atau isyarat dan mempersembahkan karya bukan sastera dan karya sastera dengan pelbagai bentuk penyampaian."] },
+          { sk: "3.1 Asas menulis.", sp: ["3.1.1 Menulis ayat dalam perenggan secara mekanis dalam bentuk tulisan berangkai."] },
+          { sk: "3.2 Menulis perkataan, frasa dan ayat yang bermakna.", sp: ["3.2.1 Membina dan menulis ayat untuk menyatakan pendapat daripada sesuatu bahan multimedia.", "3.2.2 Menghasilkan jawapan dengan memberikan alasan secara kritis dan kreatif.", "3.2.3 Mencatat maklumat berdasarkan bahan yang dibaca, dilihat dan didengar.", "3.2.4 Menulis teks prosa yang diimlakkan."] },
+          { sk: "3.3 Menghasilkan penulisan.", sp: ["3.3.1 Mendraf dan menghasilkan penulisan berformat dan tidak berformat.", "3.3.2 Mengedit dan memurnikan perenggan dari aspek ejaan, tanda baca, penggunaan imbuhan, penggunaan kata dan struktur ayat."] },
+          { sk: "4.1 Mengaplikasikan unsur keindahan dan kesantunan bahasa dalam bahasa sastera.", sp: ["4.1.1 Bercerita atau berisyarat dan mengujarkan dialog yang mengandungi peribahasa dan bahasa yang santun secara komunikasi seluruh."] },
+          { sk: "4.2 Menghayati keindahan dan kesantunan bahasa dalam bahan sastera.", sp: ["4.2.1 Melafazkan atau mengisyaratkan syair secara komunikasi seluruh dan menyatakan idea keseluruhan syair.", "4.2.2 Mendeklamasikan atau mengisyaratkan sajak secara komunikasi seluruh dan menyatakan maksud sajak."] },
+          { sk: "4.3 Menghasilkan bahan sastera dengan menyerapkan keindahan dan kesantunan bahasa serta mempersembahkannya secara kreatif.", sp: ["4.3.1 Mengubah suai puisi dengan bahasa yang indah dan santun secara separa berpandu serta mempersembahkannya secara komunikasi seluruh dengan kreatif.", "4.3.2 Mengubah suai cerita dengan bahasa yang indah dan santun secara separa berpandu dan mempersembahkannya secara komunikasi seluruh dengan kreatif.", "4.3.3 Mengubah suai seni kata lagu dengan menggunakan diksi yang sesuai dan mempersembahkannya secara komunikasi seluruh dengan gaya yang kreatif."] },
+          { sk: "4.4 Mengaplikasikan, menghayati dan menghasilkan unsur keindahan dalam seni tulisan jawi.", sp: ["4.4.1 Mengenal, mengecam, menyebut atau mengisyarat dan menulis huruf tunggal dalam perumpamaan mengikut kaedah seni tulisan jawi.", "4.4.2 Mempersembahkan perumpamaan dengan menggunakan keindahan seni tulisan jawi."] },
+          { sk: "5.1 Memahami dan menggunakan golongan kata mengikut konteks.", sp: ["5.1.1 Memahami dan menggunakan kata nama mengikut konteks; (i) kata nama am (ii) kata nama khas (iii) kata ganti nama (iv) penjodoh bilangan", "5.1.2 Memahami dan menggunakan kata kerja transitif dan kata kerja tak transitif mengikut konteks.", "5.1.3 Memahami dan menggunakan pelbagai kata adjektif mengikut konteks.", "5.1.4 Memahami dan menggunakan kata tugas mengikut konteks; (i) kata pemeri (ii) kata penguat (iii) kata bantu"] },
+          { sk: "5.2 Memahami dan menggunakan bentuk kata mengikut konteks.", sp: ["5.2.1 Memahami dan menggunakan kata berimbuhan mengikut konteks; (i) kata berimbuhan awalan (ii) kata berimbuhan akhiran (iii) kata berimbuhan apitan (iv) kata berimbuhan sisipan", "5.2.2 Memahami dan menggunakan kata majmuk mengikut konteks; (i) kata majmuk bebas dan kata majmuk mantap (ii) kata majmuk kiasan", "5.2.3 Memahami dan menggunakan kata ganda mengikut konteks; (i) kata ganda penuh (ii) kata ganda separa (iii) kata ganda berentak"] },
+          { sk: "5.3 Memahami dan membina ayat mengikut konteks.", sp: ["5.3.1 Memahami dan membina ayat tunggal dan ayat majmuk dengan peluasan subjek dan predikat mengikut konteks.", "5.3.2 Memahami dan membina pelbagai jenis ayat mengikut konteks; (i) ayat seruan (ii) ayat perintah", "5.3.3 Memahami dan membina ayat aktif dan ayat pasif mengikut konteks.", "5.3.4 Memahami dan membina ayat susunan biasa dan susunan songsang mengikut konteks."] }
+        ];
+
+        // --- DATA DSKP BAHASA MELAYU TAHUN 6 ---
+        const dskpBMTahun6 = [
+          { sk: "1.1 Mendengar atau melihat dan mengecam isyarat serta memberikan respons semasa berkomunikasi dalam situasi formal dan tidak formal.", sp: ["1.1.1 Mendengar atau melihat, mengecam sebutan atau isyarat dan menyebut atau mengisyarat sesuatu yang diujarkan semula dalam situasi formal dan tidak formal.", "1.1.2 Mendengar atau melihat, memahami dan memberikan respons terhadap ujaran yang terdapat dalam situasi formal dan tidak formal.", "1.1.3 Mendengar atau melihat, mentafsir dan memberikan respons secara kritis dan kreatif terhadap soalan."] },
+          { sk: "1.2 Bertutur atau berisyarat untuk menyampaikan maklumat dan idea bagi pelbagai tujuan.", sp: ["1.2.1 Bertutur atau berisyarat untuk membuat rumusan tentang sesuatu perkara secara bertatasusila mengikut konteks.", "1.2.2 Menghuraikan maklumat tersurat dan tersirat secara kritis dan kreatif.", "1.2.3 Bersoal jawab untuk membuat rumusan dan keputusan tentang sesuatu perkara."] },
+          { sk: "1.3 Bercerita dan menceritakan sesuatu perkara dengan sebutan atau isyarat yang betul.", sp: ["1.3.1 Bercerita dengan sebutan atau isyarat yang betul dan intonasi serta gaya yang sesuai.", "1.3.2 Menceritakan sesuatu bahan yang ditonton dengan sebutan atau isyarat yang betul dan intonasi serta gaya yang sesuai."] },
+          { sk: "2.1 Asas membaca (lisan atau isyarat) dan memahami.", sp: ["2.1.1 Membaca (lisan atau isyarat) teks untuk memahami maklumat tersurat dan tersirat untuk membuat rumusan.", "2.1.2 Membaca (lisan atau isyarat) dan merujuk kamus serta media elektronik untuk mencari makna perkataan, sebutan yang betul dan ejaan yang tepat mengikut susunan perkataan."] },
+          { sk: "2.2 Membaca (lisan atau isyarat), memahami dan menaakul bahan multimedia.", sp: ["2.2.1 Membaca (lisan atau isyarat), memahami dan menaakul maklumat berdasarkan bahan multimedia untuk membuat keputusan."] },
+          { sk: "2.3 Membaca (lisan atau isyarat) dan mengapresiasi karya sastera dan bukan sastera.", sp: ["2.3.1 Membaca (lisan atau isyarat) dan menganalisis kandungan teks karya sastera dan karya bukan sastera untuk membuat keputusan.", "2.3.2 Membaca (lisan atau isyarat) dan mempersembahkan karya sastera dan karya bukan sastera dengan pelbagai bentuk penyampaian."] },
+          { sk: "3.1 Asas menulis.", sp: ["3.1.1 Menulis puisi secara mekanis dalam bentuk tulisan berangkai."] },
+          { sk: "3.2 Menulis perkataan, frasa dan ayat yang bermakna.", sp: ["3.2.1 Membina dan menulis perenggan untuk menyatakan pendapat.", "3.2.2 Menghasilkan jawapan dengan memberikan alasan secara kritis dan kreatif.", "3.2.3 Mencatat maklumat berdasarkan bahan yang dibaca, dilihat dan didengar untuk membuat keputusan.", "3.2.4 Menulis teks prosa dan puisi yang diimlakkan."] },
+          { sk: "3.3 Menghasilkan penulisan.", sp: ["3.3.1 Mendraf dan menghasilkan penulisan berformat dan tidak berformat.", "3.3.2 Mengedit dan memurnikan teks daripada aspek ejaan, tanda baca, imbuhan, penggunaan kata, struktur ayat, dan laras bahasa."] },
+          { sk: "4.1 Mengaplikasikan unsur keindahan dan kesantunan bahasa dalam bahan sastera.", sp: ["4.1.1 Bercerita atau berisyarat dan mengujarkan dialog yang mengandungi peribahasa secara komunikasi seluruh."] },
+          { sk: "4.2 Menghayati keindahan dan kesantunan bahasa dalam bahan sastera.", sp: ["4.2.1 Melafazkan atau mengisyaratkan sajak secara komunikasi seluruh dan menyatakan maksud sajak.", "4.2.2 Menyanyikan atau mengisyaratkan lagu mengikut irama lagu kanak-kanak secara komunikasi seluruh dan menjelaskan maksud lirik lagu."] },
+          { sk: "4.3 Menghasilkan bahan sastera dengan menyerapkan keindahan dan kesantunan bahasa serta mempersembahkannya secara kreatif.", sp: ["4.3.1 Mengubah suai puisi secara berpandu, dan mempersembahkannya secara kreatif dengan menggunakan komunikasi seluruh.", "4.3.2 Mengubah suai cerita secara berpandu dan mempersembahkannya secara kreatif dengan menggunakan komunikasi seluruh.", "4.3.3 Mengubah suai seni kata lagu secara berpandu dan mempersembahkannya secara kreatif dengan menggunakan komunikasi seluruh."] },
+          { sk: "5.1 Memahami dan menggunakan golongan kata mengikut konteks.", sp: ["5.1.1 Memahami dan menggunakan kata nama mengikut konteks.", "5.1.2 Memahami dan menggunakan kata kerja mengikut konteks.", "5.1.3 Memahami dan menggunakan kata adjektif mengikut konteks.", "5.1.4 Memahami dan menggunakan kata tugas mengikut konteks."] },
+          { sk: "5.2 Memahami dan menggunakan bentuk kata mengikut konteks.", sp: ["5.2.1 Memahami dan menggunakan pelbagai kata berimbuhan mengikut konteks.", "5.2.2 Memahami dan menggunakan pelbagai kata majmuk mengikut konteks.", "5.2.3 Memahami dan menggunakan pelbagai kata ganda mengikut konteks."] },
+          { sk: "5.3 Memahami dan membina ayat mengikut konteks.", sp: ["5.3.1 Memahami dan membina pelbagai ayat tunggal dan ayat majmuk mengikut konteks.", "5.3.2 Memahami dan membina pelbagai jenis ayat mengikut konteks.", "5.3.3 Memahami dan membina ayat aktif dan ayat pasif mengikut konteks.", "5.3.4 Memahami dan membina ayat susunan biasa dan susunan songsang mengikut konteks."] }
+        ];
+
         const getTemaList = () => {
           if (selectedSubject === 'Bahasa Melayu') {
             if (selectedYear === 'Tahun 6') return tajukBMTahun6;
             if (selectedYear === 'Tahun 5') return tajukBMTahun5;
+            if (selectedYear === 'Tahun 4') return tajukBMTahun4;
             if (selectedYear === 'Tahun 3') return tajukBMTahun3;
           }
           return [];
@@ -437,22 +742,35 @@
 
         const students = getStudentsForReflection(selectedSubject, selectedYear);
         const currentTemaList = getTemaList();
+        
+        const getCurrentDskpList = () => {
+          if (selectedSubject === 'Bahasa Melayu') {
+            if (selectedYear === 'Tahun 3') return dskpBMTahun3;
+            if (selectedYear === 'Tahun 4') return dskpBMTahun4;
+            if (selectedYear === 'Tahun 5') return dskpBMTahun5;
+            if (selectedYear === 'Tahun 6') return dskpBMTahun6;
+          }
+          return [];
+        };
+        const currentDskpList = getCurrentDskpList();
 
+        const [tarikhRaw, setTarikhRaw] = useState(new Date().toISOString().split('T')[0]);
         const [formData, setFormData] = useState({
           minggu: '2',
-          tarikh: '19.1.2026',
-          hari: 'ISNIN',
-          masa: '0710-0810\n1030-1130',
-          kelas: selectedSubject === 'TMK' && selectedYear === 'Tahun 6' ? '6BP' : '6BD',
+          tarikh: new Date().toLocaleDateString('en-GB').replace(/\//g, '.'),
+          hari: '',
+          masa: '',
+          kelas: '',
           tema: selectedSubject === 'Bahasa Melayu' && selectedYear === 'Tahun 6' ? 'TEMA 1: KEKELUARGAAN - Unit 1: Bakat Unik' : 
                 selectedSubject === 'Bahasa Melayu' && selectedYear === 'Tahun 5' ? 'TEMA 1: KEKELUARGAAN - Unit 1: Harapan Keluarga' : 
                 selectedSubject === 'Bahasa Melayu' && selectedYear === 'Tahun 3' ? 'TEMA 1: KEKELUARGAAN - Unit 1: Seronok Bersama-sama Keluarga' : 
                 'Kekeluargaan - Unit 1 : Bakat unik',
-          standardKandungan: '1.1 Mendengar atau mengecam isyarat serta memberikan respons semasa berkomunikasi dalam situasi formal dan tidak formal.',
-          standardPembelajaran: '1.1.1 Mendengar atau melihat, mengecam sebutan atau isyarat dan menyebut atau mengisyarat semula ujaran yang terdapat dalam pelbagai situasi.',
+          standardKandungan: '',
+          standardPembelajaran: '',
           objektif: 'Pada akhir pembelajaran, murid dapat:\n\n1.  Mengecam sekurang-kurangnya 3 perkataan (meniup, rekoder, sokongan) melalui visual dan kod tangan.\n2.  Menyebut atau mengisyarat semula dialog pendek dengan betul.',
           aktiviti: '1.  Guru tunjuk gambar halaman 2 (perkhemahan & memancing).\n2.  Guru berisyarat keluarga, khemah, pancing.\n3.  Guru perkenalkan perkataan: susun, pinggan, pasang, khemah, pancing, ikan menggunakan kad gambar.\n4.  Guru tunjuk dan murid meniru kod tangan bagi setiap perkataan.\n5.  Murid memadankan kad perkataan dengan gambar di papan putih/meja\n6.  Ulangan isyarat 6 perkataan',
-          penggunaanTMK: 'Paparan Slaid PowerPoint / Video Interaktif'
+          penggunaanTMK: 'Paparan Slaid PowerPoint / Video Interaktif',
+          refleksi_0: '', refleksi_1: '', refleksi_2: '', refleksi_3: '', refleksi_4: '', refleksi_5: '', refleksi_6: '', refleksi_7: ''
         });
 
         const [copyStatus, setCopyStatus] = useState('');
@@ -461,9 +779,47 @@
         const [isSaving, setIsSaving] = useState(false);
         const [saveStatus, setSaveStatus] = useState('');
 
+        // KECERDASAN JADUAL WAKTU (Auto-isi Kelas dan Masa RPH)
+        useEffect(() => {
+          const d = new Date(tarikhRaw);
+          const dayIdx = d.getDay();
+          const namaHari = ['AHAD', 'ISNIN', 'SELASA', 'RABU', 'KHAMIS', 'JUMAAT', 'SABTU'][dayIdx];
+          
+          let targetKelas = '';
+          if (selectedSubject === 'TMK' && selectedYear === 'Tahun 6') targetKelas = '6BP';
+          else if (selectedSubject === 'Bahasa Melayu') {
+              if (selectedYear === 'Tahun 3') targetKelas = '3BD';
+              if (selectedYear === 'Tahun 4') targetKelas = '4BD';
+              if (selectedYear === 'Tahun 5') targetKelas = '5BD';
+              if (selectedYear === 'Tahun 6') targetKelas = '6BD';
+          }
+
+          const jadualHariIni = jadualWaktu[dayIdx] || [];
+          const matchedJadual = jadualHariIni.find(j => j.kelas === targetKelas);
+
+          setFormData(prev => ({
+            ...prev,
+            tarikh: tarikhRaw.split('-').reverse().join('.'), // format DD.MM.YYYY
+            hari: namaHari,
+            kelas: targetKelas || prev.kelas,
+            masa: matchedJadual ? matchedJadual.masa : '' // Kosongkan jika tak jumpa supaya cikgu boleh taip manual
+          }));
+        }, [tarikhRaw, selectedSubject, selectedYear]);
+
         const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-        // AI Simulation
+        // Fungsi Tukar Standard Kandungan untuk Auto-update senarai Standard Pembelajaran
+        const handleSKChange = (e) => {
+          setFormData({ ...formData, standardKandungan: e.target.value, standardPembelajaran: '' });
+        };
+
+        const getSPOptions = () => {
+          const foundSK = currentDskpList.find(d => d.sk === formData.standardKandungan);
+          return foundSK ? foundSK.sp : [];
+        };
+
+        const currentSPOptions = getSPOptions();
+
         const handleAIAssist = (type) => {
           if (type === 'objektif') {
             setIsGeneratingObj(true);
@@ -480,7 +836,6 @@
           }
         };
 
-        // Google Docs Copy
         const copyToClipboard = () => {
           const tableEl = document.getElementById('rph-table-export');
           const range = document.createRange();
@@ -496,7 +851,6 @@
           sel.removeAllRanges();
         };
 
-        // Save to Firebase
         const handleSaveRPH = async () => {
           if (!user) return;
           setIsSaving(true);
@@ -517,6 +871,7 @@
           if (total === 2) return 2; 
           if (total === 3) return index === 1 ? 2 : 1; 
           if (total === 4) return 1; 
+          if (total > 4) return 1; 
           return 1;
         };
 
@@ -524,15 +879,19 @@
           <div className="flex flex-col min-h-screen bg-slate-50">
             <Header title={`Borang RPH: ${selectedSubject} (${selectedYear})`} />
             <div className="p-4 flex-1 max-w-3xl mx-auto w-full space-y-6">
+              
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
-                <h3 className="font-bold text-gray-800 border-b pb-2 mb-4">Maklumat Asas</h3>
+                <h3 className="font-bold text-gray-800 border-b pb-2 mb-4 flex justify-between items-center">
+                  Maklumat Asas 
+                  <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold"><i className="fas fa-magic"></i> Auto-Isi Jadual</span>
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Minggu</label><input type="text" name="minggu" value={formData.minggu} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="text" name="tarikh" value={formData.tarikh} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Kelas</label><input type="text" name="kelas" value={formData.kelas} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
                 </div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Masa</label><textarea rows="2" name="masa" value={formData.masa} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Masa</label><textarea rows="2" name="masa" value={formData.masa} onChange={handleChange} placeholder="Masa akan diisi auto jika ada dalam jadual..." className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
 
                 <h3 className="font-bold text-gray-800 border-b pb-2 mt-6 mb-4">Kandungan Pembelajaran</h3>
                 <div>
@@ -550,8 +909,35 @@
                     <textarea rows="2" name="tema" value={formData.tema} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
                   )}
                 </div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Standard Kandungan</label><textarea rows="2" name="standardKandungan" value={formData.standardKandungan} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1">Standard Pembelajaran</label><textarea rows="3" name="standardPembelajaran" value={formData.standardPembelajaran} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
+
+                {/* --- STANDARD KANDUNGAN & PEMBELAJARAN (DSKP) --- */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Standard Kandungan</label>
+                  {currentDskpList.length > 0 ? (
+                    <select name="standardKandungan" value={formData.standardKandungan} onChange={handleSKChange} className="w-full border border-gray-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-gray-700">
+                      <option value="">-- Sila Pilih Standard Kandungan --</option>
+                      {currentDskpList.map((item, idx) => (
+                        <option key={idx} value={item.sk}>{item.sk}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <textarea rows="2" name="standardKandungan" value={formData.standardKandungan} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Standard Pembelajaran</label>
+                  {currentDskpList.length > 0 ? (
+                    <select name="standardPembelajaran" value={formData.standardPembelajaran} onChange={handleChange} className="w-full border border-gray-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-gray-700">
+                      <option value="">-- Sila Pilih Standard Pembelajaran --</option>
+                      {currentSPOptions.map((sp, idx) => (
+                        <option key={idx} value={sp}>{sp}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <textarea rows="3" name="standardPembelajaran" value={formData.standardPembelajaran} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
+                  )}
+                </div>
                 
                 <div>
                   <div className="flex justify-between items-end mb-1">
@@ -572,6 +958,17 @@
                   <textarea rows="6" name="aktiviti" value={formData.aktiviti} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
                 </div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1">Penggunaan TMK</label><input type="text" name="penggunaanTMK" value={formData.penggunaanTMK} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+                
+                {/* TAMBAHAN KOTAK INPUT UNTUK REFLEKSI */}
+                <h3 className="font-bold text-gray-800 border-b pb-2 mt-6 mb-4">Refleksi Murid</h3>
+                <div className="grid grid-cols-1 gap-3">
+                  {students.map((student, index) => (
+                    <div key={`input-refleksi-${index}`}>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">{student}</label>
+                      <textarea rows="2" name={`refleksi_${index}`} value={formData[`refleksi_${index}`]} onChange={handleChange} placeholder={`Taip refleksi untuk ${student}...`} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* PRATONTON JADUAL GOOGLE DOCS */}
@@ -603,9 +1000,16 @@
                       <tr><td colSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', verticalAlign: 'top' }}>PENGGUNAAN TMK</td><td colSpan="4" style={{ border: '1px solid black', padding: '8px', whiteSpace: 'pre-wrap', verticalAlign: 'top' }}>{formData.penggunaanTMK}</td></tr>
                       <tr>
                         <td colSpan="2" rowSpan="2" style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#d9ead3', verticalAlign: 'top' }}>REFLEKSI</td>
-                        {students.map((student, index) => <td key={`name-${index}`} colSpan={getColSpan(students.length, index)} style={{ border: '1px solid black', padding: '8px', textAlign: 'center' }}>{student}</td>)}
+                        {students.map((student, index) => <td key={`name-${index}`} colSpan={getColSpan(students.length, index)} style={{ border: '1px solid black', padding: '8px', textAlign: 'center', fontSize: '9pt' }}>{student}</td>)}
                       </tr>
-                      <tr>{students.map((student, index) => <td key={`box-${index}`} colSpan={getColSpan(students.length, index)} style={{ border: '1px solid black', padding: '8px', height: '60px' }}></td>)}</tr>
+                      <tr>
+                        {/* PAUTAN REFLEKSI KE JADUAL GOOGLE DOCS */}
+                        {students.map((student, index) => (
+                          <td key={`box-${index}`} colSpan={getColSpan(students.length, index)} style={{ border: '1px solid black', padding: '8px', height: '60px', verticalAlign: 'top', whiteSpace: 'pre-wrap' }}>
+                            {formData[`refleksi_${index}`]}
+                          </td>
+                        ))}
+                      </tr>
                     </tbody>
                   </table>
                  </div>
@@ -635,7 +1039,7 @@
         case 'bm': return <SubMenuView title="Bahasa Melayu" options={['Tahun 3', 'Tahun 4', 'Tahun 5', 'Tahun 6']} onSelect={(year) => handleSelectYear('Bahasa Melayu', year)} />;
         case 'tmk': return <SubMenuView title="Teknologi Maklumat dan Komunikasi" options={['Tahun 4', 'Tahun 5', 'Tahun 6']} onSelect={(year) => handleSelectYear('TMK', year)} />;
         case 'rph-form': return <RphFormView />;
-        case 'cuti': return <PlaceholderView title="Cuti & Program" bgClass="bg-amber-500" />;
+        case 'cuti': return <CutiProgramView />;
         case 'kehadiran': return <KehadiranView />;
         case 'rekod': return <RekodRPHView />;
         case 'semakan': return <SemakanMingguView />;
