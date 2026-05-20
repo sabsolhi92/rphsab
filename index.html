@@ -82,6 +82,57 @@
       6: [] // Sabtu
     };
 
+    // --- DATA TAKWIM 2026 ---
+    const takwim2026 = [
+      { minggu: 1, tarikh: "12-16 Jan", catatan: "Minggu Transisi Tahun 1 / Program Minggu 1" },
+      { minggu: 2, tarikh: "19-23 Jan", catatan: "Minggu Transisi Tahun 1" },
+      { minggu: 3, tarikh: "26-30 Jan", catatan: "Minggu Transisi Tahun" },
+      { minggu: 4, tarikh: "2-6 Feb", catatan: "Minggu Transisi Tahun" },
+      { minggu: 5, tarikh: "9-13 Feb", catatan: "" },
+      { minggu: 6, tarikh: "16-20 Feb", catatan: "" },
+      { minggu: 7, tarikh: "23-27 Feb", catatan: "" },
+      { minggu: 8, tarikh: "2-6 Mac", catatan: "" },
+      { minggu: 9, tarikh: "9-13 Mac", catatan: "" },
+      { minggu: 10, tarikh: "16-20 Mac", catatan: "" },
+      { type: "cuti", tarikh: "21-29 Mac 2026", catatan: "CUTI PERTENGAHAN PENGGAL 1" },
+      { minggu: 11, tarikh: "30 Mac - 3 April", catatan: "" },
+      { minggu: 12, tarikh: "6-10 April", catatan: "" },
+      { minggu: 13, tarikh: "13-17 April", catatan: "" },
+      { minggu: 14, tarikh: "20-24 April", catatan: "" },
+      { minggu: 15, tarikh: "27 April - 1 Mei", catatan: "" },
+      { minggu: 16, tarikh: "4-8 Mei", catatan: "" },
+      { minggu: 17, tarikh: "11-15 Mei", catatan: "" },
+      { minggu: 18, tarikh: "18-22 Mei", catatan: "" },
+      { type: "cuti", tarikh: "23 Mei - 7 Jun 2026", catatan: "CUTI PERTENGAHAN TAHUN" },
+      { minggu: 19, tarikh: "8-12 Jun", catatan: "" },
+      { minggu: 20, tarikh: "15-19 Jun", catatan: "" },
+      { minggu: 21, tarikh: "22-26 Jun", catatan: "" },
+      { minggu: 22, tarikh: "29 Jun - 3 Julai", catatan: "" },
+      { minggu: 23, tarikh: "6-10 Julai", catatan: "" },
+      { minggu: 24, tarikh: "13-17 Julai", catatan: "" },
+      { minggu: 25, tarikh: "20-24 Julai", catatan: "" },
+      { minggu: 26, tarikh: "27-31 Julai", catatan: "" },
+      { minggu: 27, tarikh: "3-7 Ogos", catatan: "" },
+      { minggu: 28, tarikh: "10-14 Ogos", catatan: "" },
+      { minggu: 29, tarikh: "17-21 Ogos", catatan: "" },
+      { minggu: 30, tarikh: "24-28 Ogos", catatan: "" },
+      { type: "cuti", tarikh: "29 Ogos - 6 September 2026", catatan: "CUTI PERTENGAHAN PENGGAL 2" },
+      { minggu: 31, tarikh: "7-11 September", catatan: "" },
+      { minggu: 32, tarikh: "14-18 September", catatan: "" },
+      { minggu: 33, tarikh: "21-25 September", catatan: "" },
+      { minggu: 34, tarikh: "28 Sept - 2 Okt", catatan: "" },
+      { minggu: 35, tarikh: "5-9 Okt", catatan: "" },
+      { minggu: 36, tarikh: "12-16 Okt", catatan: "" },
+      { minggu: 37, tarikh: "19-23 Okt", catatan: "" },
+      { minggu: 38, tarikh: "26-30 Okt", catatan: "" },
+      { minggu: 39, tarikh: "2-6 Nov", catatan: "" },
+      { minggu: 40, tarikh: "9-13 Nov", catatan: "" },
+      { minggu: 41, tarikh: "16-20 Nov", catatan: "" },
+      { minggu: 42, tarikh: "23-27 Nov", catatan: "" },
+      { minggu: 43, tarikh: "30 Nov - 4 Dis", catatan: "" },
+      { type: "cuti", tarikh: "5 Dis 2026 - 31 Dis 2026", catatan: "CUTI AKHIR PERSEKOLAHAN" }
+    ];
+
     function App() {
       // --- STATE PENGURUSAN ---
       const [currentView, setCurrentView] = useState('home');
@@ -90,6 +141,7 @@
       
       const [user, setUser] = useState(null);
       const [rphList, setRphList] = useState([]);
+      const [kehadiranList, setKehadiranList] = useState([]); // TAMBAHAN: State senarai kehadiran
 
       // 1. Log masuk automatik Firebase
       useEffect(() => {
@@ -98,19 +150,26 @@
         return () => unsubscribe();
       }, []);
 
-      // 2. Tarik Rekod dari Firestore
+      // 2. Tarik Rekod RPH dari Firestore
       useEffect(() => {
         if (!user) return;
-        
         const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
         const unsubscribe = rphRef.onSnapshot((snapshot) => {
           const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           records.sort((a, b) => b.createdAt - a.createdAt);
           setRphList(records);
-        }, (error) => {
-          console.error("Ralat mengambil data:", error);
-        });
-        
+        }, (error) => console.error("Ralat mengambil RPH:", error));
+        return () => unsubscribe();
+      }, [user]);
+
+      // 3. Tarik Rekod Kehadiran dari Firestore (Untuk di-sync dengan RPH)
+      useEffect(() => {
+        if (!user) return;
+        const kehRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('kehadiranRecords');
+        const unsubscribe = kehRef.onSnapshot((snapshot) => {
+          const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setKehadiranList(records);
+        }, (error) => console.error("Ralat mengambil kehadiran:", error));
         return () => unsubscribe();
       }, [user]);
 
@@ -190,7 +249,7 @@
       const CutiProgramView = () => {
         const [tarikhRaw, setTarikhRaw] = useState(new Date().toISOString().split('T')[0]);
         const [formData, setFormData] = useState({
-          minggu: '',
+          minggu: '2',
           tarikh: new Date().toLocaleDateString('en-GB').replace(/\//g, '.'),
           hari: 'ISNIN',
           tajuk: ''
@@ -261,9 +320,17 @@
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h3 className="font-bold text-gray-800 border-b pb-2 mb-4">Maklumat Cuti / Program</h3>
                 <div className="grid grid-cols-3 gap-4">
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Minggu</label><input type="text" name="minggu" value={formData.minggu} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" /></div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Minggu</label>
+                    <select name="minggu" value={formData.minggu} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm">
+                      <option value="">-- Pilih --</option>
+                      {takwim2026.filter(t => t.minggu).map(item => (
+                        <option key={item.minggu} value={item.minggu}>Minggu {item.minggu} ({item.tarikh})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm" /></div>
                 </div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tajuk Program / Catatan Cuti</label><input type="text" name="tajuk" value={formData.tajuk} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" placeholder="Cth: Cuti Hari Pekerja" /></div>
                 <div>
@@ -496,56 +563,6 @@
       };
 
       const SemakanMingguView = () => {
-        const takwim2026 = [
-          { minggu: 1, tarikh: "12-16 Jan", catatan: "Minggu Transisi Tahun 1 / Program Minggu 1" },
-          { minggu: 2, tarikh: "19-23 Jan", catatan: "Minggu Transisi Tahun 1" },
-          { minggu: 3, tarikh: "26-30 Jan", catatan: "Minggu Transisi Tahun" },
-          { minggu: 4, tarikh: "2-6 Feb", catatan: "Minggu Transisi Tahun" },
-          { minggu: 5, tarikh: "9-13 Feb", catatan: "" },
-          { minggu: 6, tarikh: "16-20 Feb", catatan: "" },
-          { minggu: 7, tarikh: "23-27 Feb", catatan: "" },
-          { minggu: 8, tarikh: "2-6 Mac", catatan: "" },
-          { minggu: 9, tarikh: "9-13 Mac", catatan: "" },
-          { minggu: 10, tarikh: "16-20 Mac", catatan: "" },
-          { type: "cuti", tarikh: "21-29 Mac 2026", catatan: "CUTI PERTENGAHAN PENGGAL 1" },
-          { minggu: 11, tarikh: "30 Mac - 3 April", catatan: "" },
-          { minggu: 12, tarikh: "6-10 April", catatan: "" },
-          { minggu: 13, tarikh: "13-17 April", catatan: "" },
-          { minggu: 14, tarikh: "20-24 April", catatan: "" },
-          { minggu: 15, tarikh: "27 April - 1 Mei", catatan: "" },
-          { minggu: 16, tarikh: "4-8 Mei", catatan: "" },
-          { minggu: 17, tarikh: "11-15 Mei", catatan: "" },
-          { minggu: 18, tarikh: "18-22 Mei", catatan: "" },
-          { type: "cuti", tarikh: "23 Mei - 7 Jun 2026", catatan: "CUTI PERTENGAHAN TAHUN" },
-          { minggu: 19, tarikh: "8-12 Jun", catatan: "" },
-          { minggu: 20, tarikh: "15-19 Jun", catatan: "" },
-          { minggu: 21, tarikh: "22-26 Jun", catatan: "" },
-          { minggu: 22, tarikh: "29 Jun - 3 Julai", catatan: "" },
-          { minggu: 23, tarikh: "6-10 Julai", catatan: "" },
-          { minggu: 24, tarikh: "13-17 Julai", catatan: "" },
-          { minggu: 25, tarikh: "20-24 Julai", catatan: "" },
-          { minggu: 26, tarikh: "27-31 Julai", catatan: "" },
-          { minggu: 27, tarikh: "3-7 Ogos", catatan: "" },
-          { minggu: 28, tarikh: "10-14 Ogos", catatan: "" },
-          { minggu: 29, tarikh: "17-21 Ogos", catatan: "" },
-          { minggu: 30, tarikh: "24-28 Ogos", catatan: "" },
-          { type: "cuti", tarikh: "29 Ogos - 6 September 2026", catatan: "CUTI PERTENGAHAN PENGGAL 2" },
-          { minggu: 31, tarikh: "7-11 September", catatan: "" },
-          { minggu: 32, tarikh: "14-18 September", catatan: "" },
-          { minggu: 33, tarikh: "21-25 September", catatan: "" },
-          { minggu: 34, tarikh: "28 Sept - 2 Okt", catatan: "" },
-          { minggu: 35, tarikh: "5-9 Okt", catatan: "" },
-          { minggu: 36, tarikh: "12-16 Okt", catatan: "" },
-          { minggu: 37, tarikh: "19-23 Okt", catatan: "" },
-          { minggu: 38, tarikh: "26-30 Okt", catatan: "" },
-          { minggu: 39, tarikh: "2-6 Nov", catatan: "" },
-          { minggu: 40, tarikh: "9-13 Nov", catatan: "" },
-          { minggu: 41, tarikh: "16-20 Nov", catatan: "" },
-          { minggu: 42, tarikh: "23-27 Nov", catatan: "" },
-          { minggu: 43, tarikh: "30 Nov - 4 Dis", catatan: "" },
-          { type: "cuti", tarikh: "5 Dis 2026 - 31 Dis 2026", catatan: "CUTI AKHIR PERSEKOLAHAN" }
-        ];
-
         return (
           <div className="flex flex-col min-h-screen bg-slate-50">
             <Header title="Semakan Mingguan" />
@@ -779,7 +796,7 @@
         const [isSaving, setIsSaving] = useState(false);
         const [saveStatus, setSaveStatus] = useState('');
 
-        // KECERDASAN JADUAL WAKTU (Auto-isi Kelas dan Masa RPH)
+        // KECERDASAN JADUAL WAKTU (Auto-isi Kelas dan Masa RPH) & KEHADIRAN (Auto-Isi Refleksi)
         useEffect(() => {
           const d = new Date(tarikhRaw);
           const dayIdx = d.getDay();
@@ -797,18 +814,53 @@
           const jadualHariIni = jadualWaktu[dayIdx] || [];
           const matchedJadual = jadualHariIni.find(j => j.kelas === targetKelas);
 
-          setFormData(prev => ({
-            ...prev,
-            tarikh: tarikhRaw.split('-').reverse().join('.'), // format DD.MM.YYYY
-            hari: namaHari,
-            kelas: targetKelas || prev.kelas,
-            masa: matchedJadual ? matchedJadual.masa : '' // Kosongkan jika tak jumpa supaya cikgu boleh taip manual
-          }));
-        }, [tarikhRaw, selectedSubject, selectedYear]);
+          // Padankan rekod kehadiran di Firebase
+          const matchedKehadiran = kehadiranList.find(k => k.tarikh === tarikhRaw && k.kelas === targetKelas);
+          let absentStudentsFullNames = [];
+          if (matchedKehadiran && matchedKehadiran.rekod) {
+              absentStudentsFullNames = Object.keys(matchedKehadiran.rekod).filter(name => matchedKehadiran.rekod[name] === false);
+          }
+
+          setFormData(prev => {
+             const newObj = {
+                ...prev,
+                tarikh: tarikhRaw.split('-').reverse().join('.'), // format DD.MM.YYYY
+                hari: namaHari,
+                kelas: targetKelas || prev.kelas,
+             };
+             
+             // Update masa
+             if(matchedJadual) newObj.masa = matchedJadual.masa;
+             else if (prev.tarikh !== tarikhRaw.split('-').reverse().join('.')) newObj.masa = '';
+
+             // Semak dan set Refleksi TIDAK HADIR
+             const currentStudents = getStudentsForReflection(selectedSubject, selectedYear);
+             currentStudents.forEach((groupName, idx) => {
+                 const namesInGroup = groupName.split(',').map(n => n.trim().toUpperCase());
+                 const isAbsent = absentStudentsFullNames.some(absentFull => {
+                     return namesInGroup.some(shortName => {
+                         if (shortName === 'DARREN' && absentFull.includes('DAREN')) return true;
+                         if (shortName === 'ALEXZANDER' && absentFull.includes('ALEXZANDER')) return true;
+                         return absentFull.includes(shortName);
+                     });
+                 });
+                 
+                 const currentVal = prev[`refleksi_${idx}`] || '';
+                 if (isAbsent) {
+                     newObj[`refleksi_${idx}`] = 'TIDAK HADIR';
+                 } else if (currentVal === 'TIDAK HADIR') {
+                     newObj[`refleksi_${idx}`] = '';
+                 } else if (prev.tarikh !== tarikhRaw.split('-').reverse().join('.')) {
+                     newObj[`refleksi_${idx}`] = ''; // Reset apabila tarikh ditukar
+                 }
+             });
+
+             return newObj;
+          });
+        }, [tarikhRaw, selectedSubject, selectedYear, kehadiranList]);
 
         const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
-        // Fungsi Tukar Standard Kandungan untuk Auto-update senarai Standard Pembelajaran
         const handleSKChange = (e) => {
           setFormData({ ...formData, standardKandungan: e.target.value, standardPembelajaran: '' });
         };
@@ -886,10 +938,18 @@
                   <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold"><i className="fas fa-magic"></i> Auto-Isi Jadual</span>
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Minggu</label><input type="text" name="minggu" value={formData.minggu} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Kelas</label><input type="text" name="kelas" value={formData.kelas} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Minggu</label>
+                    <select name="minggu" value={formData.minggu} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm">
+                      <option value="">-- Pilih --</option>
+                      {takwim2026.filter(t => t.minggu).map(item => (
+                        <option key={item.minggu} value={item.minggu}>Minggu {item.minggu} ({item.tarikh})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Kelas</label><input type="text" name="kelas" value={formData.kelas} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" /></div>
                 </div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1">Masa</label><textarea rows="2" name="masa" value={formData.masa} onChange={handleChange} placeholder="Masa akan diisi auto jika ada dalam jadual..." className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"></textarea></div>
 
@@ -960,7 +1020,10 @@
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1">Penggunaan TMK</label><input type="text" name="penggunaanTMK" value={formData.penggunaanTMK} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" /></div>
                 
                 {/* TAMBAHAN KOTAK INPUT UNTUK REFLEKSI */}
-                <h3 className="font-bold text-gray-800 border-b pb-2 mt-6 mb-4">Refleksi Murid</h3>
+                <h3 className="font-bold text-gray-800 border-b pb-2 mt-6 mb-4 flex justify-between items-center">
+                  Refleksi Murid
+                  <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded font-bold"><i className="fas fa-link"></i> Auto-Kehadiran</span>
+                </h3>
                 <div className="grid grid-cols-1 gap-3">
                   {students.map((student, index) => (
                     <div key={`input-refleksi-${index}`}>
