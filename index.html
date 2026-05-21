@@ -141,7 +141,11 @@
       
       const [user, setUser] = useState(null);
       const [rphList, setRphList] = useState([]);
-      const [kehadiranList, setKehadiranList] = useState([]); // TAMBAHAN: State senarai kehadiran
+      const [kehadiranList, setKehadiranList] = useState([]);
+
+      // STATE UNTUK FUNGSI EDIT RPH & CUTI
+      const [selectedRph, setSelectedRph] = useState(null);
+      const [selectedCuti, setSelectedCuti] = useState(null);
 
       // 1. Log masuk automatik Firebase
       useEffect(() => {
@@ -150,15 +154,19 @@
         return () => unsubscribe();
       }, []);
 
-      // 2. Tarik Rekod RPH dari Firestore
+      // 2. Tarik Rekod dari Firestore
       useEffect(() => {
         if (!user) return;
+        
         const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
         const unsubscribe = rphRef.onSnapshot((snapshot) => {
           const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           records.sort((a, b) => b.createdAt - a.createdAt);
           setRphList(records);
-        }, (error) => console.error("Ralat mengambil RPH:", error));
+        }, (error) => {
+          console.error("Ralat mengambil data:", error);
+        });
+        
         return () => unsubscribe();
       }, [user]);
 
@@ -192,7 +200,14 @@
       const Header = ({ title, showBack = true }) => (
         <div className="bg-white shadow-sm px-4 py-4 sticky top-0 z-10 flex items-center">
           {showBack ? (
-            <button onClick={() => setCurrentView('home')} className="mr-3 p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <button 
+              onClick={() => { 
+                setSelectedRph(null); 
+                setSelectedCuti(null); 
+                setCurrentView('home'); 
+              }} 
+              className="mr-3 p-2 rounded-full hover:bg-gray-100 transition-colors"
+            >
               <i className="fas fa-arrow-left text-gray-600 text-lg"></i>
             </button>
           ) : (
@@ -213,7 +228,7 @@
             <div className="flex flex-col space-y-4">
               <MenuButton title="Bahasa Melayu" description="Bina RPH subjek Bahasa Melayu" icon={<i className="fas fa-book-open"></i>} colorClass="bg-gradient-to-r from-blue-500 to-blue-600" onClick={() => setCurrentView('bm')} />
               <MenuButton title="Teknologi Maklumat dan Komunikasi" description="Bina RPH subjek TMK" icon={<i className="fas fa-desktop"></i>} colorClass="bg-gradient-to-r from-teal-500 to-emerald-600" onClick={() => setCurrentView('tmk')} />
-              <MenuButton title="Cuti / Program Sekolah" description="Rekod cuti am atau program rasmi" icon={<i className="fas fa-calendar-alt"></i>} colorClass="bg-gradient-to-r from-amber-500 to-orange-600" onClick={() => setCurrentView('cuti')} />
+              <MenuButton title="Cuti / Program Sekolah" description="Rekod cuti am atau program rasmi" icon={<i className="fas fa-calendar-alt"></i>} colorClass="bg-gradient-to-r from-amber-500 to-orange-600" onClick={() => { setSelectedCuti(null); setCurrentView('cuti'); }} />
               
               <div className="border-t border-gray-200 my-4 pt-4">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Pengurusan & Rekod</h3>
@@ -247,27 +262,38 @@
 
       // --- CUTI DAN PROGRAM ---
       const CutiProgramView = () => {
-        const [tarikhRaw, setTarikhRaw] = useState(new Date().toISOString().split('T')[0]);
-        const [formData, setFormData] = useState({
+        const initialCutiTarikhRaw = selectedCuti && selectedCuti.tarikh 
+            ? selectedCuti.tarikh.split('.').reverse().join('-') 
+            : new Date().toISOString().split('T')[0];
+
+        const [tarikhRaw, setTarikhRaw] = useState(initialCutiTarikhRaw);
+        const [formData, setFormData] = useState(selectedCuti || {
           minggu: '2',
           tarikh: new Date().toLocaleDateString('en-GB').replace(/\//g, '.'),
           hari: 'ISNIN',
           tajuk: ''
         });
-        const [imagePreview, setImagePreview] = useState(null);
+        const [imagePreview, setImagePreview] = useState(selectedCuti ? selectedCuti.image : null);
         const [imageError, setImageError] = useState('');
         const [copyStatus, setCopyStatus] = useState('');
         const [isSaving, setIsSaving] = useState(false);
         const [saveStatus, setSaveStatus] = useState('');
+        const [isAutoFillEnabled, setIsAutoFillEnabled] = useState(!selectedCuti);
 
         useEffect(() => {
+          if (!isAutoFillEnabled) return;
           const d = new Date(tarikhRaw);
           const dayIdx = d.getDay();
           const namaHari = ['AHAD', 'ISNIN', 'SELASA', 'RABU', 'KHAMIS', 'JUMAAT', 'SABTU'][dayIdx];
           setFormData(prev => ({ ...prev, tarikh: tarikhRaw.split('-').reverse().join('.'), hari: namaHari }));
-        }, [tarikhRaw]);
+        }, [tarikhRaw, isAutoFillEnabled]);
 
         const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+        const handleTarikhChange = (e) => {
+            setTarikhRaw(e.target.value);
+            setIsAutoFillEnabled(true);
+        };
 
         const handleImageUpload = (e) => {
           const file = e.target.files[0];
@@ -303,10 +329,16 @@
           setIsSaving(true);
           try {
             const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
-            await rphRef.add({ 
+            const dataToSave = { 
               ...formData, subjek: 'Cuti / Program Sekolah', kelas: '-', tahun: '-', tema: formData.tajuk,
-              image: imagePreview && imagePreview.length < 1000000 ? imagePreview : null, createdAt: Date.now() 
-            });
+              image: imagePreview && imagePreview.length < 1000000 ? imagePreview : null
+            };
+
+            if (selectedCuti && selectedCuti.id) {
+               await rphRef.doc(selectedCuti.id).update({ ...dataToSave, updatedAt: Date.now() });
+            } else {
+               await rphRef.add({ ...dataToSave, createdAt: Date.now() });
+            }
             setSaveStatus('success');
             setTimeout(() => setSaveStatus(''), 3000);
           } catch (error) { setSaveStatus('error'); }
@@ -315,7 +347,7 @@
 
         return (
           <div className="flex flex-col min-h-screen bg-slate-50">
-            <Header title="Cuti & Program Sekolah" />
+            <Header title={selectedCuti ? "Kemaskini Cuti & Program" : "Cuti & Program Sekolah"} />
             <div className="p-4 flex-1 max-w-3xl mx-auto w-full space-y-6">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
                 <h3 className="font-bold text-gray-800 border-b pb-2 mb-4">Maklumat Cuti / Program</h3>
@@ -329,7 +361,7 @@
                       ))}
                     </select>
                   </div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={handleTarikhChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm" /></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50 text-sm" /></div>
                 </div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tajuk Program / Catatan Cuti</label><input type="text" name="tajuk" value={formData.tajuk} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-amber-500 bg-gray-50" placeholder="Cth: Cuti Hari Pekerja" /></div>
@@ -371,114 +403,6 @@
                   {isSaving ? <i className="fas fa-spinner fa-spin"></i> : saveStatus === 'success' ? <i className="fas fa-check"></i> : <i className="fas fa-save"></i>} {saveStatus === 'success' ? 'Disimpan' : 'Simpan'}
                 </button>
               </div>
-            </div>
-          </div>
-        );
-      };
-
-      // --- KEHADIRAN MURID ---
-      const KehadiranView = () => {
-        const senaraiMurid = {
-          '3BD': ['ALEXZANDER NGAOH ANAK MOSES KUDI', 'NATALIE WEE YAN TONG'],
-          '4BD': ['ISABELL EVE WAN AJANG', 'IZZ IBTISAM BIN AHMAD MUJAHID', 'IZZNURIN ATYA BINTI IZMET ISKANDAR'],
-          '5BD': ['DAREN TING TIAN ZJUN', 'HAIDIEL SHAHRY BIN SOFIZAN'],
-          '6BD': ['ATHENA KHO XUAN', 'MIRZHAN HAMIZI BIN MOHAMMAD FAIZAL'],
-          '6BP': ['EVANGELINE KAREN PAULUS', 'IAN MCKENZIE ANAK MAT', 'IHYA ZAFIRAH BINTI HANAFIE', 'IRFAN BIN MOHAMMAD EZZARDDIN', 'JOSELINE JONG SHI YING', 'MOHAMMAD IZZUANDIE BIN ABDULLAH', 'NUR AINA BINTI BARAHIM', 'SURAIYA KHAIRINA BINTI KHAIRUL']
-        };
-
-        const senaraiKelasAsal = ['3BD', '4BD', '5BD', '6BD', '6BP'];
-        const [tarikh, setTarikh] = useState(new Date().toISOString().split('T')[0]);
-        const [availableKelas, setAvailableKelas] = useState(senaraiKelasAsal);
-        const [kelas, setKelas] = useState('');
-        const [kehadiranState, setKehadiranState] = useState({});
-        const [isSaving, setIsSaving] = useState(false);
-        const [saveStatus, setSaveStatus] = useState('');
-
-        useEffect(() => {
-          const d = new Date(tarikh);
-          const dayIdx = d.getDay();
-          const jadualHari = jadualWaktu[dayIdx] || [];
-          let kelasHariIni = senaraiKelasAsal;
-          if (jadualHari.length > 0) {
-             kelasHariIni = [...new Set(jadualHari.map(j => j.kelas))];
-          }
-          setAvailableKelas(kelasHariIni);
-          if (!kelasHariIni.includes(kelas)) {
-             setKelas(kelasHariIni[0]);
-          }
-        }, [tarikh]);
-
-        useEffect(() => {
-          if (!kelas || !senaraiMurid[kelas]) return;
-          const initialState = {};
-          senaraiMurid[kelas].forEach(murid => { initialState[murid] = true; });
-          setKehadiranState(initialState);
-        }, [kelas]);
-
-        const toggleHadir = (murid) => setKehadiranState(prev => ({ ...prev, [murid]: !prev[murid] }));
-        const totalHadir = Object.values(kehadiranState).filter(v => v === true).length;
-        const totalMurid = senaraiMurid[kelas] ? senaraiMurid[kelas].length : 0;
-
-        const handleSave = async () => {
-          if (!user) return;
-          setIsSaving(true);
-          try {
-            await db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('kehadiranRecords').add({
-              tarikh, kelas, rekod: kehadiranState, totalHadir, totalMurid, createdAt: Date.now()
-            });
-            setSaveStatus('success');
-            setTimeout(() => setSaveStatus(''), 3000);
-          } catch (error) { setSaveStatus('error'); }
-          setIsSaving(false);
-        };
-
-        return (
-          <div className="flex flex-col min-h-screen bg-slate-50">
-            <Header title="Kehadiran Murid" />
-            <div className="p-4 flex-1 max-w-3xl mx-auto w-full pb-24">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6 space-y-5">
-                <div>
-                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-calendar mr-2"></i> Tarikh</label>
-                  <input type="date" value={tarikh} onChange={(e) => setTarikh(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-pink-500 outline-none transition-all" />
-                </div>
-                <div>
-                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-users mr-2"></i> Pilih Kelas (Mengikut Jadual Waktu)</label>
-                  <div className="flex flex-wrap gap-2">
-                    {availableKelas.map(k => (
-                      <button key={k} onClick={() => setKelas(k)} className={`px-4 py-2 rounded-xl font-medium transition-all ${kelas === k ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{k}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {kelas && senaraiMurid[kelas] && (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-                  <div className="bg-pink-50 px-4 py-3 border-b border-pink-100 flex justify-between items-center">
-                    <span className="font-bold text-pink-800 text-sm">Senarai Murid ({kelas})</span>
-                    <span className="text-xs font-semibold bg-white text-pink-600 px-2 py-1 rounded-md shadow-sm">
-                      Kehadiran: {totalHadir} / {totalMurid}
-                    </span>
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {senaraiMurid[kelas].map((murid, idx) => (
-                      <div key={idx} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                        <div className="flex items-center gap-3 pr-4">
-                          <div className="w-7 h-7 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">{idx + 1}</div>
-                          <span className="font-semibold text-gray-700 text-sm leading-tight">{murid}</span>
-                        </div>
-                        <button onClick={() => toggleHadir(murid)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm ${kehadiranState[murid] ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
-                          {kehadiranState[murid] ? <><i className="fas fa-check mr-1"></i> Hadir</> : <><i className="fas fa-times mr-1"></i> Tidak Hadir</>}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <button onClick={handleSave} disabled={isSaving} className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold shadow-md transition-all active:scale-95 disabled:opacity-70 ${saveStatus === 'success' ? 'bg-green-500 text-white' : 'bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:shadow-lg'}`}>
-                {isSaving ? <i className="fas fa-spinner fa-spin"></i> : saveStatus === 'success' ? <i className="fas fa-check-circle text-xl"></i> : <i className="fas fa-save text-xl"></i>} 
-                {saveStatus === 'success' ? 'Rekod Disimpan!' : 'Simpan Rekod Kehadiran'}
-              </button>
             </div>
           </div>
         );
@@ -544,7 +468,23 @@
                         <button onClick={() => handleDelete(rekod.id)} className="px-3 py-2 bg-red-600 text-white hover:bg-red-700 rounded-xl transition-colors text-xs font-bold">Padam?</button>
                       ) : (
                         <>
-                          <button className="p-2.5 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-xl transition-colors"><i className="fas fa-edit"></i></button>
+                          <button 
+                            onClick={() => {
+                              // Tentukan paparan Edit berdasarkan Subjek
+                              if (rekod.subjek === 'Cuti / Program Sekolah') {
+                                setSelectedCuti(rekod);
+                                setCurrentView('cuti');
+                              } else {
+                                setSelectedRph(rekod);
+                                setSelectedSubject(rekod.subjek);
+                                setSelectedYear(rekod.tahun || '-');
+                                setCurrentView('rph-form');
+                              }
+                            }} 
+                            className="p-2.5 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-xl transition-colors"
+                          >
+                            <i className="fas fa-edit"></i>
+                          </button>
                           <button onClick={() => setDeleteConfirmId(rekod.id)} className="p-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-colors"><i className="fas fa-trash"></i></button>
                         </>
                       )}
@@ -556,46 +496,6 @@
                     <p>Tiada rekod ditemui.</p>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
-        );
-      };
-
-      const SemakanMingguView = () => {
-        return (
-          <div className="flex flex-col min-h-screen bg-slate-50">
-            <Header title="Semakan Mingguan" />
-            <div className="p-4 flex-1">
-              <p className="text-gray-500 text-sm mb-4 px-1">Status penghantaran auto-tick berdasarkan rekod RPH yang telah siap dibina.</p>
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-100">
-                {takwim2026.map((item, index) => {
-                  if (item.type === 'cuti') {
-                    return (
-                      <div key={`cuti-${index}`} className="p-4 bg-amber-50/50 flex flex-col justify-center items-center text-center">
-                        <span className="text-amber-800 font-bold text-sm">{item.catatan}</span>
-                        <span className="text-amber-600 text-xs mt-1">{item.tarikh}</span>
-                      </div>
-                    );
-                  }
-                  const isHantar = rphList.some(rph => parseInt(rph.minggu) === item.minggu); 
-                  return (
-                    <div key={`minggu-${item.minggu}`} className="p-4 flex items-start sm:items-center justify-between hover:bg-gray-50 transition-colors">
-                      <div className="flex-1 pr-4">
-                        <h4 className="font-semibold text-gray-800">Minggu {item.minggu}</h4>
-                        <p className="text-sm text-gray-500 mt-0.5"><i className="fas fa-calendar mr-1"></i> {item.tarikh}</p>
-                        {item.catatan && <span className="inline-block mt-1.5 px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 text-xs font-medium rounded-md">{item.catatan}</span>}
-                      </div>
-                      <div className="mt-1 sm:mt-0 whitespace-nowrap">
-                        {isHantar ? (
-                          <div className="flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded-full text-sm font-medium"><i className="fas fa-check-circle mr-1.5"></i> Dihantar</div>
-                        ) : (
-                          <div className="flex items-center text-gray-400 px-3 py-1.5 bg-gray-50 rounded-full text-sm font-medium"><i className="far fa-circle mr-1.5"></i> Belum</div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </div>
           </div>
@@ -771,8 +671,15 @@
         };
         const currentDskpList = getCurrentDskpList();
 
-        const [tarikhRaw, setTarikhRaw] = useState(new Date().toISOString().split('T')[0]);
-        const [formData, setFormData] = useState({
+        // SEMAKAN SEKIRANYA EDIT MODE:
+        const initialTarikhRaw = selectedRph && selectedRph.tarikh 
+            ? selectedRph.tarikh.split('.').reverse().join('-') 
+            : new Date().toISOString().split('T')[0];
+
+        const [tarikhRaw, setTarikhRaw] = useState(initialTarikhRaw);
+        
+        // Pilihan lalai atau data dari Edit
+        const defaultFormData = {
           minggu: '2',
           tarikh: new Date().toLocaleDateString('en-GB').replace(/\//g, '.'),
           hari: '',
@@ -788,16 +695,22 @@
           aktiviti: '1.  Guru tunjuk gambar halaman 2 (perkhemahan & memancing).\n2.  Guru berisyarat keluarga, khemah, pancing.\n3.  Guru perkenalkan perkataan: susun, pinggan, pasang, khemah, pancing, ikan menggunakan kad gambar.\n4.  Guru tunjuk dan murid meniru kod tangan bagi setiap perkataan.\n5.  Murid memadankan kad perkataan dengan gambar di papan putih/meja\n6.  Ulangan isyarat 6 perkataan',
           penggunaanTMK: 'Paparan Slaid PowerPoint / Video Interaktif',
           refleksi_0: '', refleksi_1: '', refleksi_2: '', refleksi_3: '', refleksi_4: '', refleksi_5: '', refleksi_6: '', refleksi_7: ''
-        });
+        };
 
+        const [formData, setFormData] = useState(selectedRph || defaultFormData);
         const [copyStatus, setCopyStatus] = useState('');
         const [isGeneratingObj, setIsGeneratingObj] = useState(false);
         const [isGeneratingAct, setIsGeneratingAct] = useState(false);
         const [isSaving, setIsSaving] = useState(false);
         const [saveStatus, setSaveStatus] = useState('');
 
+        // Status untuk memastikan sistem auto-isi tidak mengganggu data jika kita dalam mode 'Edit'
+        const [isAutoFillEnabled, setIsAutoFillEnabled] = useState(!selectedRph);
+
         // KECERDASAN JADUAL WAKTU (Auto-isi Kelas dan Masa RPH) & KEHADIRAN (Auto-Isi Refleksi)
         useEffect(() => {
+          if (!isAutoFillEnabled) return; // Skip auto-fill semasa awal form dibuka dalam mod Edit
+
           const d = new Date(tarikhRaw);
           const dayIdx = d.getDay();
           const namaHari = ['AHAD', 'ISNIN', 'SELASA', 'RABU', 'KHAMIS', 'JUMAAT', 'SABTU'][dayIdx];
@@ -857,9 +770,14 @@
 
              return newObj;
           });
-        }, [tarikhRaw, selectedSubject, selectedYear, kehadiranList]);
+        }, [tarikhRaw, selectedSubject, selectedYear, kehadiranList, isAutoFillEnabled]);
 
         const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+        const handleTarikhChange = (e) => {
+          setTarikhRaw(e.target.value);
+          setIsAutoFillEnabled(true); // Jika cikgu tukar tarikh, aktifkan auto-fill semula
+        };
 
         const handleSKChange = (e) => {
           setFormData({ ...formData, standardKandungan: e.target.value, standardPembelajaran: '' });
@@ -908,7 +826,15 @@
           setIsSaving(true);
           try {
             const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
-            await rphRef.add({ ...formData, subjek: selectedSubject, tahun: selectedYear, createdAt: Date.now() });
+            
+            if (selectedRph && selectedRph.id) {
+               // Kemaskini rekod sedia ada (Edit Mode)
+               await rphRef.doc(selectedRph.id).update({ ...formData, subjek: selectedSubject, tahun: selectedYear, updatedAt: Date.now() });
+            } else {
+               // Tambah rekod baru
+               await rphRef.add({ ...formData, subjek: selectedSubject, tahun: selectedYear, createdAt: Date.now() });
+            }
+            
             setSaveStatus('success');
             setTimeout(() => setSaveStatus(''), 3000);
           } catch (error) {
@@ -929,7 +855,7 @@
 
         return (
           <div className="flex flex-col min-h-screen bg-slate-50">
-            <Header title={`Borang RPH: ${selectedSubject} (${selectedYear})`} />
+            <Header title={selectedRph ? `Kemaskini RPH: ${selectedSubject} (${selectedYear})` : `Borang RPH: ${selectedSubject} (${selectedYear})`} />
             <div className="p-4 flex-1 max-w-3xl mx-auto w-full space-y-6">
               
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 space-y-4">
@@ -947,7 +873,7 @@
                       ))}
                     </select>
                   </div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={(e) => setTarikhRaw(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Tarikh</label><input type="date" value={tarikhRaw} onChange={handleTarikhChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" /></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Hari</label><input type="text" name="hari" value={formData.hari} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" /></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Kelas</label><input type="text" name="kelas" value={formData.kelas} onChange={handleChange} className="w-full border rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" /></div>
                 </div>
@@ -1095,6 +1021,7 @@
       const handleSelectYear = (subject, year) => {
         setSelectedSubject(subject);
         setSelectedYear(year);
+        setSelectedRph(null); // Memastikan borang RPH baru dibuka bukannya edit mode
         setCurrentView('rph-form');
       };
 
