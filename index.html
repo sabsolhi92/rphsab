@@ -2,126 +2,46 @@
 <html lang="ms">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>e-RPH Cikgu Sabariah</title>
-
-  <!-- Logo Shortcut -->
-  <link rel="icon" type="image/jpeg" href="logo_rph.jpeg">
-  <link rel="apple-touch-icon" href="logo_rph.jpeg">
-
-  <!-- Tailwind CSS dari CDN -->
+  <!-- Ikon Shortcut -->
+  <link rel="shortcut icon" href="logo_rph.jpeg" type="image/jpeg">
+  
+  <!-- Tailwind CSS & React CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- FontAwesome (Ikon) -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-  <!-- React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- Babel (Tukarkan React JSX ke JavaScript di dalam browser) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Firebase Compat Scripts -->
+  
+  <!-- Firebase Scripts -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
-  <style>
-    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; }
-  </style>
 </head>
-<body>
+<body class="bg-slate-50">
+
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
-
-    // --- FIREBASE CONFIGURATION CIKGU SABARIAH ---
+    // Konfigurasi Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyBdFtSEEsdk0v8u95gq80xazhuYD3yF_RE",
       authDomain: "rphsab-61a88.firebaseapp.com",
       projectId: "rphsab-61a88",
       storageBucket: "rphsab-61a88.firebasestorage.app",
       messagingSenderId: "377431075107",
-      appId: "1:377431075107:web:013160264e46a5faf88496",
-      measurementId: "G-0G85XE6JE7"
+      appId: "1:377431075107:web:013160264e46a5faf88496"
     };
 
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
-    const auth = firebase.auth();
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    const appIdStr = 'e-rph-sabariah';
-
-    const jadualWaktu = {
-      0: [], 
-      1: [{ kelas: '6BD', masa: '0710-0810\n1030-1130' }, { kelas: '5BD', masa: '0810-0910\n1200-1300' }, { kelas: '3BD', masa: '0910-1030' }],
-      2: [{ kelas: '5BD', masa: '0910-0940\n1000-1030' }, { kelas: '3BD', masa: '1130-1230' }],
-      3: [{ kelas: '6BD', masa: '0710-0810' }, { kelas: '5BD', masa: '0810-0910' }, { kelas: '6BP', masa: '1000-1100' }, { kelas: '3BD', masa: '1200-1230' }],
-      4: [{ kelas: '3BD', masa: '0740-0840' }, { kelas: '5BD', masa: '1000-1100' }, { kelas: '6BD', masa: '1100-1200' }],
-      5: [{ kelas: '3BD', masa: '0840-0940' }, { kelas: '6BD', masa: '0940-1030' }],
-      6: []
-    };
-
-    const takwim2026 = [
-      { minggu: 1, tarikh: "12-16 Jan", catatan: "Minggu Transisi Tahun 1 / Program Minggu 1" },
-      { minggu: 2, tarikh: "19-23 Jan", catatan: "Minggu Transisi Tahun 1" },
-      { minggu: 3, tarikh: "26-30 Jan", catatan: "Minggu Transisi Tahun" },
-      { minggu: 4, tarikh: "2-6 Feb", catatan: "Minggu Transisi Tahun" },
-      { minggu: 5, tarikh: "9-13 Feb", catatan: "" },
-      { minggu: 6, tarikh: "16-20 Feb", catatan: "" },
-      { minggu: 7, tarikh: "23-27 Feb", catatan: "" },
-      { minggu: 8, tarikh: "2-6 Mac", catatan: "" },
-      { minggu: 9, tarikh: "9-13 Mac", catatan: "" },
-      { minggu: 10, tarikh: "16-20 Mac", catatan: "" },
-      { type: "cuti", tarikh: "21-29 Mac 2026", catatan: "CUTI PERTENGAHAN PENGGAL 1" },
-      { minggu: 11, tarikh: "30 Mac - 3 April", catatan: "" },
-      { minggu: 12, tarikh: "6-10 April", catatan: "" },
-      { minggu: 13, tarikh: "13-17 April", catatan: "" },
-      { minggu: 14, tarikh: "20-24 April", catatan: "" },
-      { minggu: 15, tarikh: "27 April - 1 Mei", catatan: "" },
-      { minggu: 16, tarikh: "4-8 Mei", catatan: "" },
-      { minggu: 17, tarikh: "11-15 Mei", catatan: "" },
-      { minggu: 18, tarikh: "18-22 Mei", catatan: "" },
-      { type: "cuti", tarikh: "23 Mei - 7 Jun 2026", catatan: "CUTI PERTENGAHAN TAHUN" },
-      { minggu: 19, tarikh: "8-12 Jun", catatan: "" },
-      { minggu: 20, tarikh: "15-19 Jun", catatan: "" },
-      { minggu: 21, tarikh: "22-26 Jun", catatan: "" },
-      { minggu: 22, tarikh: "29 Jun - 3 Julai", catatan: "" },
-      { minggu: 23, tarikh: "6-10 Julai", catatan: "" },
-      { minggu: 24, tarikh: "13-17 Julai", catatan: "" },
-      { minggu: 25, tarikh: "20-24 Julai", catatan: "" },
-      { minggu: 26, tarikh: "27-31 Julai", catatan: "" },
-      { minggu: 27, tarikh: "3-7 Ogos", catatan: "" },
-      { minggu: 28, tarikh: "10-14 Ogos", catatan: "" },
-      { minggu: 29, tarikh: "17-21 Ogos", catatan: "" },
-      { minggu: 30, tarikh: "24-28 Ogos", catatan: "" },
-      { type: "cuti", tarikh: "29 Ogos - 6 September 2026", catatan: "CUTI PERTENGAHAN PENGGAL 2" },
-      { minggu: 31, tarikh: "7-11 September", catatan: "" },
-      { minggu: 32, tarikh: "14-18 September", catatan: "" },
-      { minggu: 33, tarikh: "21-25 September", catatan: "" },
-      { minggu: 34, tarikh: "28 Sept - 2 Okt", catatan: "" },
-      { minggu: 35, tarikh: "5-9 Okt", catatan: "" },
-      { minggu: 36, tarikh: "12-16 Okt", catatan: "" },
-      { minggu: 37, tarikh: "19-23 Okt", catatan: "" },
-      { minggu: 38, tarikh: "26-30 Okt", catatan: "" },
-      { minggu: 39, tarikh: "2-6 Nov", catatan: "" },
-      { minggu: 40, tarikh: "9-13 Nov", catatan: "" },
-      { minggu: 41, tarikh: "16-20 Nov", catatan: "" },
-      { minggu: 42, tarikh: "23-27 Nov", catatan: "" },
-      { minggu: 43, tarikh: "30 Nov - 4 Dis", catatan: "" },
-      { type: "cuti", tarikh: "5 Dis 2026 - 31 Dis 2026", catatan: "CUTI AKHIR PERSEKOLAHAN" }
-    ];
 
     function App() {
-      // ... (baki kod asal cikgu dikekalkan di sini) ...
-      // (Kerana kod sangat panjang, saya kekalkan struktur yang sama)
-      
       return (
-        <div className="flex flex-col min-h-screen bg-slate-50">
-           {/* UI Aplikasi Cikgu Sabariah di sini */}
+        <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+          <img src="logo_rph.jpeg" alt="Logo" className="w-32 h-32 rounded-full mb-6 shadow-lg" />
+          <h1 className="text-2xl font-bold text-gray-800">Selamat Datang ke e-RPH</h1>
+          <p className="text-gray-600 mt-2">Sistem sedang dimuatkan...</p>
         </div>
       );
     }
@@ -129,5 +49,6 @@
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
+
 </body>
 </html>
