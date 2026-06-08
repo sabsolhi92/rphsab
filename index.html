@@ -51,6 +51,9 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
     const appIdStr = 'e-rph-sabariah';
+    
+    // ID Utama yang dikongsi oleh SEMUA peranti Cikgu Sabariah
+    const sharedUserId = 'akaun_guru_sabariah'; 
 
     // --- DATA JADUAL WAKTU CIKGU SABARIAH 2026 ---
     const jadualWaktu = {
@@ -133,6 +136,42 @@
       { type: "cuti", tarikh: "5 Dis 2026 - 31 Dis 2026", catatan: "CUTI AKHIR PERSEKOLAHAN" }
     ];
 
+    // --- HELPER KECERDASAN BUATAN (AI) GEMINI ---
+    const fetchWithRetry = async (url, options, retries = 5) => {
+      const delays = [1000, 2000, 4000, 8000, 16000];
+      for (let i = 0; i < retries; i++) {
+        try {
+          const response = await fetch(url, options);
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          return await response.json();
+        } catch (e) {
+          if (i === retries - 1) throw e;
+          await new Promise(res => setTimeout(res, delays[i]));
+        }
+      }
+    };
+
+    const generateAI = async (prompt) => {
+      const apiKey = ""; // API Key dibekalkan oleh sistem secara automatik di pelayan
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: "Anda adalah pakar pendidik (Guru) yang pakar dalam pendidikan khas (ketidakupayaan pendengaran). Sentiasa berikan jawapan ringkas, jelas dan terus ke inti pati yang sesuai dengan tahap murid pendidikan khas." }] }
+      };
+      
+      try {
+        const result = await fetchWithRetry(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        return result.candidates?.[0]?.content?.parts?.[0]?.text || "Maaf, gagal menjana teks.";
+      } catch (error) {
+        console.error(error);
+        return "Ralat sambungan API AI. Sila cuba lagi.";
+      }
+    };
+
     function App() {
       // --- STATE PENGURUSAN ---
       const [currentView, setCurrentView] = useState('home');
@@ -143,7 +182,6 @@
       const [rphList, setRphList] = useState([]);
       const [kehadiranList, setKehadiranList] = useState([]);
 
-      // STATE UNTUK FUNGSI EDIT RPH & CUTI
       const [selectedRph, setSelectedRph] = useState(null);
       const [selectedCuti, setSelectedCuti] = useState(null);
 
@@ -154,26 +192,22 @@
         return () => unsubscribe();
       }, []);
 
-      // 2. Tarik Rekod dari Firestore
+      // 2. Tarik Rekod RPH dari Firestore (Menggunakan Folder Kongsi / Shared)
       useEffect(() => {
         if (!user) return;
-        
-        const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
+        const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(sharedUserId).collection('rphRecords');
         const unsubscribe = rphRef.onSnapshot((snapshot) => {
           const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           records.sort((a, b) => b.createdAt - a.createdAt);
           setRphList(records);
-        }, (error) => {
-          console.error("Ralat mengambil data:", error);
-        });
-        
+        }, (error) => console.error("Ralat mengambil RPH:", error));
         return () => unsubscribe();
       }, [user]);
 
-      // 3. Tarik Rekod Kehadiran dari Firestore (Untuk di-sync dengan RPH)
+      // 3. Tarik Rekod Kehadiran dari Firestore (Menggunakan Folder Kongsi / Shared)
       useEffect(() => {
         if (!user) return;
-        const kehRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('kehadiranRecords');
+        const kehRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(sharedUserId).collection('kehadiranRecords');
         const unsubscribe = kehRef.onSnapshot((snapshot) => {
           const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setKehadiranList(records);
@@ -328,7 +362,7 @@
           if (!user) return;
           setIsSaving(true);
           try {
-            const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
+            const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(sharedUserId).collection('rphRecords');
             const dataToSave = { 
               ...formData, subjek: 'Cuti / Program Sekolah', kelas: '-', tahun: '-', tema: formData.tajuk,
               image: imagePreview && imagePreview.length < 1000000 ? imagePreview : null
@@ -373,7 +407,7 @@
               </div>
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
                  <h3 className="font-bold text-gray-800 mb-4">Pratonton Jadual (Boleh Disalin)</h3>
-                 <div className="min-w-[700px] pointer-events-none select-none bg-white p-2">
+                 <div className="min-w-[700px] bg-white p-2">
                    <table id="cuti-table-export" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Arial, sans-serif', fontSize: '10pt', color: 'black' }}>
                     <tbody>
                       <tr><td colSpan="6" style={{ border: '1px solid black', padding: '8px', textAlign: 'center', fontWeight: 'bold', backgroundColor: '#eef2ff' }}>CUTI UMUM / PROGRAM SEKOLAH</td></tr>
@@ -408,6 +442,114 @@
         );
       };
 
+      // --- KEHADIRAN MURID ---
+      const KehadiranView = () => {
+        const senaraiMurid = {
+          '3BD': ['ALEXZANDER NGAOH ANAK MOSES KUDI', 'NATALIE WEE YAN TONG'],
+          '4BD': ['ISABELL EVE WAN AJANG', 'IZZ IBTISAM BIN AHMAD MUJAHID', 'IZZNURIN ATYA BINTI IZMET ISKANDAR'],
+          '5BD': ['DAREN TING TIAN ZJUN', 'HAIDIEL SHAHRY BIN SOFIZAN'],
+          '6BD': ['ATHENA KHO XUAN', 'MIRZHAN HAMIZI BIN MOHAMMAD FAIZAL'],
+          '6BP': ['EVANGELINE KAREN PAULUS', 'IAN MCKENZIE ANAK MAT', 'IHYA ZAFIRAH BINTI HANAFIE', 'IRFAN BIN MOHAMMAD EZZARDDIN', 'JOSELINE JONG SHI YING', 'MOHAMMAD IZZUANDIE BIN ABDULLAH', 'NUR AINA BINTI BARAHIM', 'SURAIYA KHAIRINA BINTI KHAIRUL']
+        };
+
+        const senaraiKelasAsal = ['3BD', '4BD', '5BD', '6BD', '6BP'];
+        const [tarikh, setTarikh] = useState(new Date().toISOString().split('T')[0]);
+        const [availableKelas, setAvailableKelas] = useState(senaraiKelasAsal);
+        const [kelas, setKelas] = useState('');
+        const [kehadiranState, setKehadiranState] = useState({});
+        const [isSaving, setIsSaving] = useState(false);
+        const [saveStatus, setSaveStatus] = useState('');
+
+        useEffect(() => {
+          const d = new Date(tarikh);
+          const dayIdx = d.getDay();
+          const jadualHari = jadualWaktu[dayIdx] || [];
+          let kelasHariIni = senaraiKelasAsal;
+          if (jadualHari.length > 0) {
+             kelasHariIni = [...new Set(jadualHari.map(j => j.kelas))];
+          }
+          setAvailableKelas(kelasHariIni);
+          if (!kelasHariIni.includes(kelas)) {
+             setKelas(kelasHariIni[0]);
+          }
+        }, [tarikh]);
+
+        useEffect(() => {
+          if (!kelas || !senaraiMurid[kelas]) return;
+          const initialState = {};
+          senaraiMurid[kelas].forEach(murid => { initialState[murid] = true; });
+          setKehadiranState(initialState);
+        }, [kelas]);
+
+        const toggleHadir = (murid) => setKehadiranState(prev => ({ ...prev, [murid]: !prev[murid] }));
+        const totalHadir = Object.values(kehadiranState).filter(v => v === true).length;
+        const totalMurid = senaraiMurid[kelas] ? senaraiMurid[kelas].length : 0;
+
+        const handleSave = async () => {
+          if (!user) return;
+          setIsSaving(true);
+          try {
+            await db.collection('artifacts').doc(appIdStr).collection('users').doc(sharedUserId).collection('kehadiranRecords').add({
+              tarikh, kelas, rekod: kehadiranState, totalHadir, totalMurid, createdAt: Date.now()
+            });
+            setSaveStatus('success');
+            setTimeout(() => setSaveStatus(''), 3000);
+          } catch (error) { setSaveStatus('error'); }
+          setIsSaving(false);
+        };
+
+        return (
+          <div className="flex flex-col min-h-screen bg-slate-50">
+            <Header title="Kehadiran Murid" />
+            <div className="p-4 flex-1 max-w-3xl mx-auto w-full pb-24">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6 space-y-5">
+                <div>
+                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-calendar mr-2"></i> Tarikh</label>
+                  <input type="date" value={tarikh} onChange={(e) => setTarikh(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-pink-500 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="flex items-center text-sm font-semibold text-gray-700 mb-2"><i className="fas fa-users mr-2"></i> Pilih Kelas (Mengikut Jadual Waktu)</label>
+                  <div className="flex flex-wrap gap-2">
+                    {availableKelas.map(k => (
+                      <button key={k} onClick={() => setKelas(k)} className={`px-4 py-2 rounded-xl font-medium transition-all ${kelas === k ? 'bg-pink-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{k}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {kelas && senaraiMurid[kelas] && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+                  <div className="bg-pink-50 px-4 py-3 border-b border-pink-100 flex justify-between items-center">
+                    <span className="font-bold text-pink-800 text-sm">Senarai Murid ({kelas})</span>
+                    <span className="text-xs font-semibold bg-white text-pink-600 px-2 py-1 rounded-md shadow-sm">
+                      Kehadiran: {totalHadir} / {totalMurid}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {senaraiMurid[kelas].map((murid, idx) => (
+                      <div key={idx} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-3 pr-4">
+                          <div className="w-7 h-7 shrink-0 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">{idx + 1}</div>
+                          <span className="font-semibold text-gray-700 text-sm leading-tight">{murid}</span>
+                        </div>
+                        <button onClick={() => toggleHadir(murid)} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm ${kehadiranState[murid] ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                          {kehadiranState[murid] ? <><i className="fas fa-check mr-1"></i> Hadir</> : <><i className="fas fa-times mr-1"></i> Tidak Hadir</>}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={handleSave} disabled={isSaving} className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold shadow-md transition-all active:scale-95 disabled:opacity-70 ${saveStatus === 'success' ? 'bg-green-500 text-white' : 'bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:shadow-lg'}`}>
+                {isSaving ? <i className="fas fa-spinner fa-spin"></i> : saveStatus === 'success' ? <i className="fas fa-check-circle text-xl"></i> : <i className="fas fa-save text-xl"></i>} 
+                {saveStatus === 'success' ? 'Rekod Disimpan!' : 'Simpan Rekod Kehadiran'}
+              </button>
+            </div>
+          </div>
+        );
+      };
+
       // --- REKOD RPH & SEMAKAN MINGGUAN ---
       const RekodRPHView = () => {
         const [filterSubjek, setFilterSubjek] = useState('Semua');
@@ -424,7 +566,7 @@
         const handleDelete = async (id) => {
           if (!user) return;
           try {
-            await db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords').doc(id).delete();
+            await db.collection('artifacts').doc(appIdStr).collection('users').doc(sharedUserId).collection('rphRecords').doc(id).delete();
             setDeleteConfirmId(null);
           } catch (err) { console.error("Gagal memadam:", err); }
         };
@@ -470,7 +612,6 @@
                         <>
                           <button 
                             onClick={() => {
-                              // Tentukan paparan Edit berdasarkan Subjek
                               if (rekod.subjek === 'Cuti / Program Sekolah') {
                                 setSelectedCuti(rekod);
                                 setCurrentView('cuti');
@@ -496,6 +637,46 @@
                     <p>Tiada rekod ditemui.</p>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const SemakanMingguView = () => {
+        return (
+          <div className="flex flex-col min-h-screen bg-slate-50">
+            <Header title="Semakan Mingguan" />
+            <div className="p-4 flex-1">
+              <p className="text-gray-500 text-sm mb-4 px-1">Status penghantaran auto-tick berdasarkan rekod RPH yang telah siap dibina.</p>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-100">
+                {takwim2026.map((item, index) => {
+                  if (item.type === 'cuti') {
+                    return (
+                      <div key={`cuti-${index}`} className="p-4 bg-amber-50/50 flex flex-col justify-center items-center text-center">
+                        <span className="text-amber-800 font-bold text-sm">{item.catatan}</span>
+                        <span className="text-amber-600 text-xs mt-1">{item.tarikh}</span>
+                      </div>
+                    );
+                  }
+                  const isHantar = rphList.some(rph => parseInt(rph.minggu) === item.minggu); 
+                  return (
+                    <div key={`minggu-${item.minggu}`} className="p-4 flex items-start sm:items-center justify-between hover:bg-gray-50 transition-colors">
+                      <div className="flex-1 pr-4">
+                        <h4 className="font-semibold text-gray-800">Minggu {item.minggu}</h4>
+                        <p className="text-sm text-gray-500 mt-0.5"><i className="fas fa-calendar mr-1"></i> {item.tarikh}</p>
+                        {item.catatan && <span className="inline-block mt-1.5 px-2 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 text-xs font-medium rounded-md">{item.catatan}</span>}
+                      </div>
+                      <div className="mt-1 sm:mt-0 whitespace-nowrap">
+                        {isHantar ? (
+                          <div className="flex items-center text-green-600 bg-green-50 px-3 py-1.5 rounded-full text-sm font-medium"><i className="fas fa-check-circle mr-1.5"></i> Dihantar</div>
+                        ) : (
+                          <div className="flex items-center text-gray-400 px-3 py-1.5 bg-gray-50 rounded-full text-sm font-medium"><i className="far fa-circle mr-1.5"></i> Belum</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -790,19 +971,22 @@
 
         const currentSPOptions = getSPOptions();
 
-        const handleAIAssist = (type) => {
+        const handleAIAssist = async (type) => {
+          const spText = formData.standardPembelajaran || 'Tiada';
+          const temaText = formData.tema || 'Tiada';
+          
           if (type === 'objektif') {
             setIsGeneratingObj(true);
-            setTimeout(() => {
-              setFormData(prev => ({ ...prev, objektif: 'Pada akhir pembelajaran, murid dapat:\n\n1. Mengecam 2 perkataan baru dengan bimbingan guru menggunakan isyarat.\n2. Memadankan kad gambar dengan perkataan yang betul.' }));
-              setIsGeneratingObj(false);
-            }, 1500);
+            const prompt = `Jana 2 hingga 3 objektif pembelajaran yang ringkas, jelas dan sangat mudah difahami untuk murid pendidikan khas (masalah pendengaran).\nTajuk: ${temaText}\nStandard Pembelajaran: ${spText}.\nMulakan dengan: "Pada akhir pembelajaran, murid dapat:" diikuti dengan senarai bernombor. Tolong berikan teks biasa tanpa format bold (**).`;
+            const result = await generateAI(prompt);
+            setFormData(prev => ({ ...prev, objektif: result.replace(/\*\*/g, '') }));
+            setIsGeneratingObj(false);
           } else if (type === 'aktiviti') {
             setIsGeneratingAct(true);
-            setTimeout(() => {
-              setFormData(prev => ({ ...prev, aktiviti: '1. Guru menayangkan video animasi/gambar bersaiz besar di hadapan kelas.\n2. Guru membimbing murid menyebut atau mengisyaratkan nama objek satu persatu.\n3. Murid tampil ke hadapan untuk memadankan kad perkataan dengan gambar.\n4. Latih tubi isyarat bersama rakan secara berpasangan.\n5. Guru memberi peneguhan positif (pujian/token).' }));
-              setIsGeneratingAct(false);
-            }, 1500);
+            const prompt = `Jana 4 hingga 5 langkah aktiviti pengajaran ringkas, praktikal dan sesuai untuk murid pendidikan khas (masalah pendengaran). Masukkan elemen penggunaan bahasa isyarat / visual.\nTajuk: ${temaText}\nStandard Pembelajaran: ${spText}.\nBerikan senarai bernombor sahaja. Tolong berikan teks biasa tanpa format bold (**).`;
+            const result = await generateAI(prompt);
+            setFormData(prev => ({ ...prev, aktiviti: result.replace(/\*\*/g, '') }));
+            setIsGeneratingAct(false);
           }
         };
 
@@ -825,7 +1009,7 @@
           if (!user) return;
           setIsSaving(true);
           try {
-            const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(user.uid).collection('rphRecords');
+            const rphRef = db.collection('artifacts').doc(appIdStr).collection('users').doc(sharedUserId).collection('rphRecords');
             
             if (selectedRph && selectedRph.id) {
                // Kemaskini rekod sedia ada (Edit Mode)
@@ -963,7 +1147,7 @@
               {/* PRATONTON JADUAL GOOGLE DOCS */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
                  <h3 className="font-bold text-gray-800 mb-4">Pratonton Jadual Google Docs</h3>
-                 <div className="min-w-[700px] pointer-events-none select-none bg-white p-2">
+                 <div className="min-w-[700px] bg-white p-2">
                    <table id="rph-table-export" style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Arial, sans-serif', fontSize: '10pt', color: 'black' }}>
                     <tbody>
                       <tr><td colSpan="6" style={{ border: '1px solid black', padding: '8px', textAlign: 'center', fontWeight: 'bold', backgroundColor: '#d9ead3' }}>{selectedSubject.toUpperCase() || 'BAHASA MELAYU'}</td></tr>
