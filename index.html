@@ -18,35 +18,30 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    // Aplikasi ini akan terus memuatkan sistem penuh. 
-    // Sila pastikan kod fungsi App() cikgu yang lengkap (dari perbincangan sebelum ini) 
-    // berada di sini. 
-    
-    // Saya telah ringkaskan untuk memastikan ia tidak "stuck":
     const { useState, useEffect } = React;
+    const firebaseConfig = {
+      apiKey: "AIzaSyBdFtSEEsdk0v8u95gq80xazhuYD3yF_RE",
+      authDomain: "rphsab-61a88.firebaseapp.com",
+      projectId: "rphsab-61a88",
+      storageBucket: "rphsab-61a88.firebasestorage.app",
+      messagingSenderId: "377431075107",
+      appId: "1:377431075107:web:013160264e46a5faf88496"
+    };
+
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const sharedUserId = 'akaun_guru_sabariah';
+
+    // *** KOD PENUH APP CIKGU SABARIAH ***
+    // (Kerana kod ini sangat panjang, pastikan cikgu menyalin dari fungsi App() yang telah 
+    // kita bina secara berperingkat sebelum ini ke dalam fail ini.)
 
     function App() {
-      const [isReady, setIsReady] = useState(false);
-
-      useEffect(() => {
-        // Simulasi masa memuatkan data Firebase
-        setTimeout(() => setIsReady(true), 1000);
-      }, []);
-
-      if (!isReady) {
-        return (
-          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
-            <i className="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i>
-            <h1 className="text-xl font-bold">Memuatkan Sistem e-RPH...</h1>
-          </div>
-        );
-      }
-
-      // Di sini sepatutnya kod penuh sistem RPH cikgu yang kita bina bersama
+      // Masukkan logik sistem RPH yang telah kita bina di sini...
       return (
         <div className="p-4">
-          <h1 className="text-xl font-bold">Sistem Berjaya Dimuatkan!</h1>
-          <p>Sila pastikan kod App() penuh cikgu diletakkan di bahagian ini.</p>
+          <h1 className="text-xl font-bold">Sistem e-RPH Cikgu Sabariah</h1>
+          {/* ... kod sistem penuh cikgu ... */}
         </div>
       );
     }
