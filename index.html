@@ -2,11 +2,9 @@
 <html lang="ms">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>e-RPH Cikgu Sabariah</title>
-  
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,34 +12,29 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
-<body>
+<body class="bg-slate-50">
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
-    const firebaseConfig = {
-      apiKey: "AIzaSyBdFtSEEsdk0v8u95gq80xazhuYD3yF_RE",
-      authDomain: "rphsab-61a88.firebaseapp.com",
-      projectId: "rphsab-61a88",
-      storageBucket: "rphsab-61a88.firebasestorage.app",
-      messagingSenderId: "377431075107",
-      appId: "1:377431075107:web:013160264e46a5faf88496"
-    };
-
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    const sharedUserId = 'akaun_guru_sabariah';
-
-    // *** KOD PENUH APP CIKGU SABARIAH ***
-    // (Kerana kod ini sangat panjang, pastikan cikgu menyalin dari fungsi App() yang telah 
-    // kita bina secara berperingkat sebelum ini ke dalam fail ini.)
-
     function App() {
-      // Masukkan logik sistem RPH yang telah kita bina di sini...
+      const [status, setStatus] = useState("Memuatkan sistem...");
+
+      useEffect(() => {
+        try {
+          // Ujian mudah untuk lihat sama ada React berjalan
+          setStatus("Sistem Berjaya Dimuatkan");
+        } catch (error) {
+          setStatus("Ralat: " + error.message);
+        }
+      }, []);
+
       return (
-        <div className="p-4">
-          <h1 className="text-xl font-bold">Sistem e-RPH Cikgu Sabariah</h1>
-          {/* ... kod sistem penuh cikgu ... */}
+        <div className="flex flex-col items-center justify-center min-h-screen p-4">
+          <div className="bg-white p-8 rounded-2xl shadow-lg border text-center">
+            <h1 className="text-xl font-bold text-gray-800">Status Aplikasi</h1>
+            <p className="mt-4 text-blue-600 font-semibold">{status}</p>
+            <p className="text-xs text-gray-400 mt-4">Jika cikgu nampak mesej ini, React berfungsi dengan baik.</p>
+          </div>
         </div>
       );
     }
