@@ -4,10 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>e-RPH Cikgu Sabariah</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Memuatkan React -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.23.0/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -16,25 +22,26 @@
   <div id="root"></div>
 
   <script type="text/babel">
+    // Sistem Log Ralat
+    window.onerror = function(message, source, lineno, colno, error) {
+      document.getElementById('root').innerHTML = `
+        <div style="padding:20px; color:red;">
+          <h2>Ralat Ditemui:</h2>
+          <p>${message}</p>
+          <p>Baris: ${lineno}</p>
+        </div>
+      `;
+    };
+
+    const { useState, useEffect } = React;
+
     function App() {
-      const [status, setStatus] = useState("Memuatkan sistem...");
-
-      useEffect(() => {
-        try {
-          // Ujian mudah untuk lihat sama ada React berjalan
-          setStatus("Sistem Berjaya Dimuatkan");
-        } catch (error) {
-          setStatus("Ralat: " + error.message);
-        }
-      }, []);
-
+      // Jika cikgu nampak mesej ini, React berjaya dijalankan
       return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4">
-          <div className="bg-white p-8 rounded-2xl shadow-lg border text-center">
-            <h1 className="text-xl font-bold text-gray-800">Status Aplikasi</h1>
-            <p className="mt-4 text-blue-600 font-semibold">{status}</p>
-            <p className="text-xs text-gray-400 mt-4">Jika cikgu nampak mesej ini, React berfungsi dengan baik.</p>
-          </div>
+        <div className="flex flex-col items-center justify-center min-h-screen bg-blue-50 text-blue-900">
+          <i className="fas fa-check-circle text-6xl mb-4"></i>
+          <h1 className="text-2xl font-bold">Sistem Berjaya Dijalankan!</h1>
+          <p className="mt-2">Sistem RPH cikgu kini sedia untuk dipautkan semula dengan kod utama.</p>
         </div>
       );
     }
